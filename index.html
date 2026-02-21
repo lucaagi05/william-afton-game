@@ -110,8 +110,8 @@
             window.AudioManager.playTextboxSound();
             const selected = c.options[choiceIndex];
             if (selected === 'Yes') {
-              // Save to slot 1 for now; enables Load/Extra and shows "Game saved."
-              window.currentCheckpoint = 'left_room_checkpoint';
+              // Save runtime state to slot 1
+              window.currentCheckpoint = activeInteraction.id || 'checkpoint';
               if (window.gameMenu && window.gameMenu.saveGame) {
                 window.gameMenu.saveGame(1);
               }

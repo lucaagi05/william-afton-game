@@ -7,15 +7,23 @@ let gameStarted = false;
 let currentSaveSlot = null;
 
 // Menu state
+// Menu state
 const menuState = {
     isActive: true,
     selectedOption: 0,
-    options: [
-        { text: 'Start', enabled: true },
-        { text: 'Load', enabled: false },
-        { text: 'Extra', enabled: false },
-        { text: 'Load From File', enabled: true }
-    ]
+    currentMenu: 'root',
+    options: {
+        root: [
+            { text: 'Start', enabled: true },
+            { text: 'Load', enabled: true },
+            { text: 'Extra', enabled: false }
+        ],
+        load: [
+            { text: 'Load from Browser', enabled: true },
+            { text: 'Load from File', enabled: true },
+            { text: 'Back', enabled: true }
+        ]
+    }
 };
 
 // Save/Load functions
@@ -29,16 +37,16 @@ function saveGame(slot) {
     localStorage.setItem(SAVE_KEY_PREFIX + slot, JSON.stringify(gameData));
     currentSaveSlot = slot;
 
-    // Enable Load/Extra after first save
-    menuState.options[1].enabled = true;
-    menuState.options[2].enabled = true;
+    // Enable Extra after first save
+    const extraOption = menuState.options.root.find(o => o.text === 'Extra');
+    if (extraOption) extraOption.enabled = true;
 
     // Add Erase Data and Save To File options once available
-    if (!menuState.options.find(o => o.text === 'Erase Data')) {
-        menuState.options.push({ text: 'Erase Data', enabled: true });
+    if (!menuState.options.root.find(o => o.text === 'Erase Data')) {
+        menuState.options.root.push({ text: 'Erase Data', enabled: true });
     }
-    if (!menuState.options.find(o => o.text === 'Save To File')) {
-        menuState.options.push({ text: 'Save To File', enabled: true });
+    if (!menuState.options.root.find(o => o.text === 'Save To File')) {
+        menuState.options.root.push({ text: 'Save To File', enabled: true });
     }
 
     // Also export a file so save persists outside localStorage
@@ -87,8 +95,8 @@ function importSaveFromFile() {
 
             // Treat loaded file as a valid save → enable menu items
             menuState.isActive = false;
-            gameStarted = true; // Assume loading a file starts the game
-            menuState.currentMenu = 'root'; // Go back to root menu after loading
+            gameStarted = true;
+            menuState.currentMenu = 'root';
 
             const extraOption = menuState.options.root.find(o => o.text === 'Extra');
             if (extraOption) extraOption.enabled = true;
@@ -188,7 +196,7 @@ function handleMenuInput(e) {
                         break;
                     case 'Back':
                         menuState.currentMenu = 'root';
-                        menuState.selectedOption = menuState.options.root.findIndex(o => o.text === 'Load'); // Return to 'Load'
+                        menuState.selectedOption = menuState.options.root.findIndex(o => o.text === 'Load');
                         break;
                 }
             }
@@ -204,7 +212,7 @@ function showLoadDialog() {
         if (loadGame(slot)) {
             menuState.isActive = false;
             gameStarted = true;
-            menuState.currentMenu = 'root'; // Go back to root menu after loading
+            menuState.currentMenu = 'root';
         } else {
             alert('No save data found in this slot!');
         }

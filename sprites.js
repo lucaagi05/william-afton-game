@@ -1,10 +1,10 @@
 // Sprite and hitbox definitions, drawing, and collision functions
 const SPRITE_SIZE = 240;
 const SPRITE_MAP = {
-    down:   [{x:0,y:0}, {x:1,y:0}],
-    left:   [{x:2,y:0}, {x:2,y:1}],
-    right:  [{x:0,y:1}, {x:1,y:1}],
-    up:     [{x:0,y:2}, {x:1,y:2}]
+  down: [{ x: 0, y: 0 }, { x: 1, y: 0 }],
+  left: [{ x: 2, y: 0 }, { x: 2, y: 1 }],
+  right: [{ x: 0, y: 1 }, { x: 1, y: 1 }],
+  up: [{ x: 0, y: 2 }, { x: 1, y: 2 }]
 };
 window.playerDir = 'down';
 window.animFrame = 0;
@@ -19,47 +19,47 @@ const SPRITE_HEIGHT = 160;
 const tableImg = new Image();
 tableImg.src = 'sprites/party_table.png';
 const table = {
-    x: 120, y: -50, width: 300, height: 300
+  x: 120, y: -50, width: 300, height: 300
 };
 const tableHitbox = {
-    x: 125.5, y: 50, width: 290, height: 45
+  x: 125.5, y: 50, width: 290, height: 45
 };
 
 const downloadIcon = new Image();
 downloadIcon.src = 'sprites/download.png';
 const downloadBtn = {
-    x: 540, y: 540, width: 40, height: 40
+  x: 540, y: 540, width: 40, height: 40
 };
 
 // Player hitbox definition and update function
 window.playerHitbox = { x: 0, y: 0, width: 30, height: 50 };
-window.updatePlayerHitbox = function(player) {
+window.updatePlayerHitbox = function (player) {
   window.playerHitbox.x = player.x + 10;
   window.playerHitbox.y = player.y + 0;
 };
 
 function drawPlayer(ctx, player) {
-    if (spriteSheet.complete) {
-        const frame = SPRITE_MAP[window.playerDir][window.animFrame];
-        ctx.drawImage(
-            spriteSheet,
-            frame.x * SPRITE_SIZE, frame.y * SPRITE_SIZE, SPRITE_SIZE, SPRITE_SIZE,
-            player.x, player.y, player.width, player.height
-        );
-    }
+  if (spriteSheet.complete) {
+    const frame = SPRITE_MAP[window.playerDir][window.animFrame];
+    ctx.drawImage(
+      spriteSheet,
+      frame.x * SPRITE_SIZE, frame.y * SPRITE_SIZE, SPRITE_SIZE, SPRITE_SIZE,
+      player.x, player.y, player.width, player.height
+    );
+  }
 }
 
 function drawTable(ctx) {
-    if (tableImg.complete) {
-        ctx.drawImage(tableImg, table.x, table.y, table.width, table.height);
-    }
+  if (tableImg.complete) {
+    ctx.drawImage(tableImg, table.x, table.y, table.width, table.height);
+  }
 }
 
 function isColliding(a, b) {
-    return a.x < b.x + b.width &&
-           a.x + a.width > b.x &&
-           a.y < b.y + b.height &&
-           a.y + a.height > b.y;
+  return a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y;
 }
 
 // Export for use in index.html
@@ -119,6 +119,7 @@ function drawCheckpoint(ctx) {
   ctx.shadowBlur = 15;
   ctx.fillStyle = '#f00';
   ctx.fillRect(window.checkpoint.x, window.checkpoint.y, window.checkpoint.width, window.checkpoint.height);
+  ctx.fillRect(window.checkpointRight.x, window.checkpointRight.y, window.checkpointRight.width, window.checkpointRight.height);
   ctx.restore();
 }
 window.drawCube = drawCube;
@@ -130,4 +131,6 @@ window.cubeInteractionBox = {
 };
 window.checkpoint = { x: 30, y: 260, width: 20, height: 20 };
 window.checkpointHitbox = { x: 25, y: 255, width: 30, height: 30 };
+window.checkpointRight = { x: 550, y: 260, width: 20, height: 20 };
+window.checkpointRightHitbox = { x: 545, y: 255, width: 30, height: 30 };
 window.drawCheckpoint = drawCheckpoint;

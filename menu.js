@@ -124,6 +124,13 @@ function drawMenu(ctx) {
         ctx.fillStyle = !option.enabled ? '#444' : (index === menuState.selectedOption ? '#0ff' : '#fff');
         ctx.fillText(option.text, ctx.canvas.width / 2, 250 + (index * 60));
     });
+
+    // Draw Download Icon in Menu (bottom right)
+    if (window.downloadIcon && window.downloadIcon.complete) {
+        ctx.globalAlpha = 0.8;
+        ctx.drawImage(window.downloadIcon, window.downloadBtn.x, window.downloadBtn.y, window.downloadBtn.width, window.downloadBtn.height);
+        ctx.globalAlpha = 1.0;
+    }
 }
 
 function handleMenuInput(e) {
@@ -153,11 +160,18 @@ function handleMenuInput(e) {
                     eraseAllData();
                     break;
                 case 'Save To File':
-                    exportSaveToFile({
-                        playerX: window.player.x,
-                        playerY: window.player.y,
-                        checkpoint: window.currentCheckpoint || null
-                    });
+                    // Sync with Slot 1 (Default Browser Storage)
+                    const slot1 = localStorage.getItem(SAVE_KEY_PREFIX + '1');
+                    if (slot1) {
+                        exportSaveToFile(JSON.parse(slot1), 'fnaf_save_synced.json');
+                    } else {
+                        // Fallback to current state if no browser save yet
+                        exportSaveToFile({
+                            playerX: window.player.x,
+                            playerY: window.player.y,
+                            checkpoint: window.currentCheckpoint || null
+                        }, 'fnaf_save_current.json');
+                    }
                     break;
             }
         } else if (menuState.currentMenu === 'load') {
@@ -184,6 +198,29 @@ function handleMenuInput(e) {
     }
 }
 
+// Function to check if menu download icon was clicked
+function handleMenuClick(clickX, clickY) {
+    if (!menuState.isActive) return false;
+    const btn = window.downloadBtn;
+    if (clickX >= btn.x && clickX <= btn.x + btn.width &&
+        clickY >= btn.y && clickY <= btn.y + btn.height) {
+
+        // Export Synced Data (Slot 1)
+        const slot1 = localStorage.getItem(SAVE_KEY_PREFIX + '1');
+        if (slot1) {
+            exportSaveToFile(JSON.parse(slot1), 'fnaf_save_synced.json');
+        } else {
+            exportSaveToFile({
+                playerX: window.player.x,
+                playerY: window.player.y,
+                checkpoint: window.currentCheckpoint || null
+            }, 'fnaf_save_current.json');
+        }
+        return true;
+    }
+    return false;
+}
+
 function eraseAllData() {
     for (let i = 1; i <= SAVE_SLOTS; i++) {
         localStorage.removeItem(SAVE_KEY_PREFIX + i);
@@ -197,6 +234,7 @@ window.gameMenu = {
     state: menuState,
     draw: drawMenu,
     handleInput: handleMenuInput,
+    handleClick: handleMenuClick,
     saveGame: saveGame,
     loadGame: loadGame,
     exportSaveToFile: exportSaveToFile,

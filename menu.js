@@ -41,8 +41,6 @@ function saveGame(slot) {
     if (!menuState.options.root.find(o => o.text === 'Save To File')) {
         menuState.options.root.push({ text: 'Save To File', enabled: true });
     }
-
-    exportSaveToFile(gameData, `fnaf_save_slot${slot}.json`);
 }
 
 function loadGame(slot) {

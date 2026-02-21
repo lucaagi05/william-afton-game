@@ -25,6 +25,12 @@ const tableHitbox = {
     x: 125.5, y: 50, width: 290, height: 45
 };
 
+const downloadIcon = new Image();
+downloadIcon.src = 'sprites/download.png';
+const downloadBtn = {
+    x: 540, y: 540, width: 40, height: 40
+};
+
 // Player hitbox definition and update function
 window.playerHitbox = { x: 0, y: 0, width: 30, height: 50 };
 window.updatePlayerHitbox = function(player) {
@@ -64,6 +70,8 @@ window.animTimer = animTimer;
 window.ANIM_INTERVAL = ANIM_INTERVAL;
 window.spriteSheet = spriteSheet;
 window.tableImg = tableImg;
+window.downloadIcon = downloadIcon;
+window.downloadBtn = downloadBtn;
 window.table = table;
 window.tableHitbox = tableHitbox;
 window.drawPlayer = drawPlayer;

@@ -87,13 +87,17 @@ function importSaveFromFile() {
 
             // Treat loaded file as a valid save → enable menu items
             menuState.isActive = false;
-            menuState.options[1].enabled = true; // Load
-            menuState.options[2].enabled = true; // Extra
-            if (!menuState.options.find(o => o.text === 'Erase Data')) {
-                menuState.options.push({ text: 'Erase Data', enabled: true });
+            gameStarted = true; // Assume loading a file starts the game
+            menuState.currentMenu = 'root'; // Go back to root menu after loading
+
+            const extraOption = menuState.options.root.find(o => o.text === 'Extra');
+            if (extraOption) extraOption.enabled = true;
+
+            if (!menuState.options.root.find(o => o.text === 'Erase Data')) {
+                menuState.options.root.push({ text: 'Erase Data', enabled: true });
             }
-            if (!menuState.options.find(o => o.text === 'Save To File')) {
-                menuState.options.push({ text: 'Save To File', enabled: true });
+            if (!menuState.options.root.find(o => o.text === 'Save To File')) {
+                menuState.options.root.push({ text: 'Save To File', enabled: true });
             }
             alert('Save loaded from file.');
         } catch (err) {
@@ -106,22 +110,23 @@ function importSaveFromFile() {
 // Menu rendering
 function drawMenu(ctx) {
     if (!menuState.isActive) return;
-    
+
     // Darken background
     ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
     ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    
+
     // Draw title
     ctx.fillStyle = '#fff';
     ctx.font = '48px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('FNAF Minigame', ctx.canvas.width / 2, 150);
-    
+    ctx.fillText(menuState.currentMenu === 'root' ? 'FNAF Minigame' : 'Load Game', ctx.canvas.width / 2, 150);
+
     // Draw options
     ctx.font = '24px monospace';
-    menuState.options.forEach((option, index) => {
+    const currentOptions = menuState.options[menuState.currentMenu];
+    currentOptions.forEach((option, index) => {
         ctx.fillStyle = !option.enabled ? '#666' :
-                        (index === menuState.selectedOption ? '#0ff' : '#fff');
+            (index === menuState.selectedOption ? '#0ff' : '#fff');
         ctx.fillText(
             option.text,
             ctx.canvas.width / 2,
@@ -133,43 +138,59 @@ function drawMenu(ctx) {
 // Menu controls
 function handleMenuInput(e) {
     if (!menuState.isActive) return;
-    switch(e.key) {
+    const currentOptions = menuState.options[menuState.currentMenu];
+
+    switch (e.key) {
         case 'ArrowUp':
-            menuState.selectedOption = (menuState.selectedOption - 1 + menuState.options.length) % menuState.options.length;
+            menuState.selectedOption = (menuState.selectedOption - 1 + currentOptions.length) % currentOptions.length;
             break;
         case 'ArrowDown':
-            menuState.selectedOption = (menuState.selectedOption + 1) % menuState.options.length;
+            menuState.selectedOption = (menuState.selectedOption + 1) % currentOptions.length;
             break;
         case 'Enter': {
-            const option = menuState.options[menuState.selectedOption];
+            const option = currentOptions[menuState.selectedOption];
             if (!option.enabled) return;
-            switch(option.text) {
-                case 'Start':
-                    menuState.isActive = false;
-                    gameStarted = true;
-                    break;
-                case 'Load':
-                    showLoadDialog();
-                    break;
-                case 'Extra':
-                    // To be implemented
-                    break;
-                case 'Erase Data':
-                    eraseAllData();
-                    break;
-                case 'Save To File': {
-                    // Use latest local slot if any; else export current runtime state
-                    const fallbackData = {
-                        playerX: window.player.x,
-                        playerY: window.player.y,
-                        checkpoint: window.currentCheckpoint || null
-                    };
-                    exportSaveToFile(fallbackData, 'fnaf_save.json');
-                    break;
+
+            if (menuState.currentMenu === 'root') {
+                switch (option.text) {
+                    case 'Start':
+                        menuState.isActive = false;
+                        gameStarted = true;
+                        break;
+                    case 'Load':
+                        menuState.currentMenu = 'load';
+                        menuState.selectedOption = 0;
+                        break;
+                    case 'Extra':
+                        // To be implemented
+                        break;
+                    case 'Erase Data':
+                        eraseAllData();
+                        break;
+                    case 'Save To File': {
+                        // Use latest local slot if any; else export current runtime state
+                        const fallbackData = {
+                            playerX: window.player.x,
+                            playerY: window.player.y,
+                            checkpoint: window.currentCheckpoint || null
+                        };
+                        exportSaveToFile(fallbackData, 'fnaf_save.json');
+                        break;
+                    }
                 }
-                case 'Load From File':
-                    importSaveFromFile();
-                    break;
+            } else if (menuState.currentMenu === 'load') {
+                switch (option.text) {
+                    case 'Load from Browser':
+                        showLoadDialog();
+                        break;
+                    case 'Load from File':
+                        importSaveFromFile();
+                        break;
+                    case 'Back':
+                        menuState.currentMenu = 'root';
+                        menuState.selectedOption = menuState.options.root.findIndex(o => o.text === 'Load'); // Return to 'Load'
+                        break;
+                }
             }
             break;
         }
@@ -183,6 +204,7 @@ function showLoadDialog() {
         if (loadGame(slot)) {
             menuState.isActive = false;
             gameStarted = true;
+            menuState.currentMenu = 'root'; // Go back to root menu after loading
         } else {
             alert('No save data found in this slot!');
         }
@@ -195,9 +217,9 @@ function eraseAllData() {
         localStorage.removeItem(SAVE_KEY_PREFIX + i);
     }
     currentSaveSlot = null;
-    menuState.options[1].enabled = false;
-    menuState.options[2].enabled = false;
-    menuState.options = menuState.options.filter(o => o.text !== 'Erase Data' && o.text !== 'Save To File');
+    const extraOption = menuState.options.root.find(o => o.text === 'Extra');
+    if (extraOption) extraOption.enabled = false;
+    menuState.options.root = menuState.options.root.filter(o => o.text !== 'Erase Data' && o.text !== 'Save To File');
 }
 
 // Export functions and state

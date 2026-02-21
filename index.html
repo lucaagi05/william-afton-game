@@ -144,6 +144,14 @@ function draw() {
   }
   window.drawCube(ctx);
   window.drawCheckpoint(ctx);
+
+  // Draw Download Icon
+  if (window.downloadIcon && window.downloadIcon.complete) {
+    ctx.globalAlpha = 0.8;
+    ctx.drawImage(window.downloadIcon, window.downloadBtn.x, window.downloadBtn.y, window.downloadBtn.width, window.downloadBtn.height);
+    ctx.globalAlpha = 1.0;
+  }
+
   if (SHOW_HITBOX) {
     ctx.save();
     ctx.strokeStyle = 'lime';
@@ -399,6 +407,31 @@ function drawTextbox(ctx, text, font, color, frame, page) {
   ctx.restore();
   return { totalPages };
 }
+
+// Click handling for the download button
+canvas.addEventListener('click', (e) => {
+    // If menu is active, don't handle gameplay clicks
+    if (window.gameMenu && window.gameMenu.state.isActive) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const clickX = (e.clientX - rect.left) * scaleX;
+    const clickY = (e.clientY - rect.top) * scaleY;
+
+    const btn = window.downloadBtn;
+    if (clickX >= btn.x && clickX <= btn.x + btn.width &&
+        clickY >= btn.y && clickY <= btn.y + btn.height) {
+        
+        // Use current runtime state for download
+        const data = {
+            playerX: window.player.x,
+            playerY: window.player.y,
+            checkpoint: window.currentCheckpoint || null
+        };
+        window.gameMenu.exportSaveToFile(data, 'fnaf_save_quick.json');
+    }
+});
 </script>
 </body>
 </html>

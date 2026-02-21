@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>FNAF-Style 2D Minigame</title>
+    <style>
+        body { background: #111; margin: 0; }
+        .centered {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        canvas { background: #222; }
+    </style>
+    <script src="sprites.js"></script>
+    <script src="interactions.js"></script>
+    <script src="audio.js"></script>
+    <script src="menu.js"></script>
+</head>
+<body>
+<div class="centered">
+    <canvas id="gameCanvas" width="600" height="600"></canvas>
+</div>
+<script>
+  let musicStarted = false;
+document.addEventListener('keydown', () => {
+  if (!musicStarted && window.AudioManager) {
+    window.AudioManager.playMusic();
+    musicStarted = true;
+  }
+});
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// inside the main <script> tag: expose player and add choice logic
+const player = {
+    x: 180,
+    y: 140,
+    width: 50,
+    height: 50,
+    color: '#fff',
+    speed: 18
+};
+window.player = player; // expose for menu save/load
+const keys = {};
+document.addEventListener('keydown', e => keys[e.key] = true);
+document.addEventListener('keyup', e => keys[e.key] = false);
+document.addEventListener('keydown', window.gameMenu.handleInput);
+document.addEventListener('keydown', window.gameMenu.handleInput);
+const moveDelay = 200;
+let lastMoveTime = 0;
+const SHOW_HITBOX = true;
+const playerHitbox = {
+    x: player.x + 30,
+    y: player.y + 30,
+    width: 30,
+    height: 50
+};
+
+let activeInteraction = null;
+// (remove duplicate declaration; textboxPage is already declared later in the script)
+let choiceIndex = 0;
+document.addEventListener('keydown', function(e) {
+  // Open menu with X anytime
+  if (e.key.toLowerCase() === 'x') {
+    window.gameMenu.state.isActive = true;
+    return;
+  }
+  // If menu is open, let menu handle keys
+  if (window.gameMenu && window.gameMenu.state.isActive) return;
+
+  // Opening interactions with Enter
+  if (e.key === 'Enter' && !activeInteraction) {
+    window.AudioManager.playTextboxSound();
+    for (const inter of window.interactions) {
+      if (window.isColliding(playerHitbox, inter.area)) {
+        activeInteraction = inter;
+        textboxPage = 0;
+        choiceIndex = 0;
+        break;
+      }
+    }
+  } else if (activeInteraction) {
+    // Interaction handling: text or choice
+    if (activeInteraction.type === 'text') {
+      if (e.key === 'Enter') {
+        window.AudioManager.playTextboxSound();
+        const t = activeInteraction.text;
+        if (t.pages && textboxPage < t.pages.length - 1) {
+          textboxPage++;
+        } else {
+          activeInteraction = null;
+        }
+      }
+    } else if (activeInteraction.type === 'choice') {
+      const c = activeInteraction.choice;
+      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+        choiceIndex = (choiceIndex - 1 + c.options.length) % c.options.length;
+      } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+        choiceIndex = (choiceIndex + 1) % c.options.length;
+      } else if (e.key === 'Enter') {
+        window.AudioManager.playTextboxSound();
+        const selected = c.options[choiceIndex];
+        if (selected === 'Yes') {
+          // Save to slot 1 for now; enables Load/Extra and shows "Game saved."
+          window.currentCheckpoint = 'left_room_checkpoint';
+          if (window.gameMenu && window.gameMenu.saveGame) {
+            window.gameMenu.saveGame(1);
+          }
+          // Show confirmation text box
+          activeInteraction = {
+            type: 'text',
+            text: {
+              pages: ["Game saved."],
+              font: c.font,
+              color: c.color,
+              frame: c.frame
+            }
+          };
+          textboxPage = 0;
+        } else {
+          // No -> close
+          activeInteraction = null;
+        }
+      }
+    }
+  }
+});
+
+// draw() function: render checkpoint and choice UI
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = '#0ff';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(2, 2, canvas.width-4, canvas.height-4);
+  // Layering logic
+  if (player.y + player.height < window.tableHitbox.y + window.tableHitbox.height) {
+    window.drawPlayer(ctx, player);
+    window.drawTable(ctx);
+  } else {
+    window.drawTable(ctx);
+    window.drawPlayer(ctx, player);
+  }
+  window.drawCube(ctx);
+  window.drawCheckpoint(ctx);
+  if (SHOW_HITBOX) {
+    ctx.save();
+    ctx.strokeStyle = 'lime';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(window.tableHitbox.x, window.tableHitbox.y, window.tableHitbox.width, window.tableHitbox.height);
+    ctx.strokeStyle = 'yellow';
+    ctx.strokeRect(playerHitbox.x, playerHitbox.y, playerHitbox.width, playerHitbox.height);
+    ctx.strokeStyle = '#0ff';
+    ctx.strokeRect(window.cubeItem.x, window.cubeItem.y, window.cubeItem.width, window.cubeItem.height);
+    ctx.strokeStyle = 'red';
+    ctx.strokeRect(window.checkpointHitbox.x, window.checkpointHitbox.y, window.checkpointHitbox.width, window.checkpointHitbox.height);
+    ctx.restore();
+  }
+  // Draw interaction UI
+  if (activeInteraction && activeInteraction.type === 'text') {
+    const t = activeInteraction.text;
+    const margin = t.frame.margin;
+    const boxY = canvas.height - t.frame.height - margin;
+    const boxX = margin;
+    const boxWidth = canvas.width - margin * 2;
+    const boxHeight = t.frame.height;
+    ctx.save();
+    ctx.fillStyle = t.frame.fill;
+    ctx.strokeStyle = t.frame.outline;
+    ctx.lineWidth = 4;
+    ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+    ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+    ctx.font = t.font;
+    ctx.fillStyle = t.color;
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
+    const pageText = t.pages[textboxPage] || "";
+    const lineHeight = 24;
+    const maxWidth = boxWidth - margin * 2;
+    const lines = wrapText(ctx, pageText, 0, 0, maxWidth, lineHeight, 10);
+    for (let i = 0; i < lines.length; i++) {
+      ctx.fillText(lines[i], boxX + margin, boxY + margin + i * lineHeight);
+    }
+    // More pages indicator
+    if (textboxPage < t.pages.length - 1) {
+      ctx.fillStyle = t.frame.outline;
+      ctx.beginPath();
+      const triX = boxX + boxWidth - margin - 12;
+      const triY = boxY + boxHeight - margin / 2;
+      ctx.moveTo(triX, triY);
+      ctx.lineTo(triX + 12, triY);
+      ctx.lineTo(triX + 6, triY + 8);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  } else if (activeInteraction && activeInteraction.type === 'choice') {
+    const c = activeInteraction.choice;
+    const margin = c.frame.margin;
+    const boxY = canvas.height - c.frame.height - margin;
+    const boxX = margin;
+    const boxWidth = canvas.width - margin * 2;
+    const boxHeight = c.frame.height;
+    ctx.save();
+    ctx.fillStyle = c.frame.fill;
+    ctx.strokeStyle = c.frame.outline;
+    ctx.lineWidth = 4;
+    ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+    ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+    ctx.font = c.font;
+    ctx.fillStyle = c.color;
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
+    // Prompt
+    const lineHeight = 24;
+    const maxWidth = boxWidth - margin * 2;
+    const promptLines = wrapText(ctx, c.prompt, 0, 0, maxWidth, lineHeight, 4);
+    for (let i = 0; i < promptLines.length; i++) {
+      ctx.fillText(promptLines[i], boxX + margin, boxY + margin + i * lineHeight);
+    }
+    // Options
+    ctx.font = '22px monospace';
+    const baseY = boxY + margin + promptLines.length * lineHeight + 10;
+    for (let i = 0; i < c.options.length; i++) {
+      const opt = c.options[i];
+      ctx.fillStyle = i === choiceIndex ? '#0ff' : c.color;
+      ctx.fillText(opt, boxX + margin, baseY + i * (lineHeight + 4));
+    }
+    ctx.restore();
+  }
+  // --- Scanline effect ---
+  ctx.save();
+  ctx.globalAlpha = 1.0;
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 1;
+  for (let y = 0; y < canvas.height; y += 4) {
+    ctx.beginPath();
+    ctx.moveTo(0, y + 0.5);
+    ctx.lineTo(canvas.width, y + 0.5);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+
+// update gameLoop to respect menu state and add menu key handling
+function gameLoop() {
+    if (window.gameMenu && window.gameMenu.state.isActive) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        window.gameMenu.draw(ctx);
+    } else {
+        update();
+        draw();
+    }
+    requestAnimationFrame(gameLoop);
+    if (window.AudioManager && !window.gameMenu.state.isActive) {
+      window.AudioManager.playMusic();
+    }
+}
+document.addEventListener('keydown', window.gameMenu.handleInput);
+
+
+function update() {
+    const now = Date.now();
+    let moved = false;
+    const prevX = player.x;
+    const prevY = player.y;
+    if (now - lastMoveTime >= moveDelay && !activeInteraction) {
+        if (keys['ArrowUp'] || keys['w'] || keys['W']) {
+            player.y -= player.speed;
+            window.playerDir = 'up';
+            lastMoveTime = now;
+            moved = true;
+        } else if (keys['ArrowDown'] || keys['s'] || keys['S']) {
+            player.y += player.speed;
+            window.playerDir = 'down';
+            lastMoveTime = now;
+            moved = true;
+        } else if (keys['ArrowLeft'] || keys['a'] || keys['A']) {
+            player.x -= player.speed;
+            window.playerDir = 'left';
+            lastMoveTime = now;
+            moved = true;
+        } else if (keys['ArrowRight'] || keys['d'] || keys['D']) {
+            player.x += player.speed;
+            window.playerDir = 'right';
+            lastMoveTime = now;
+            moved = true;
+        }
+        player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
+        player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
+    }
+    // Update hitbox position to follow player
+    playerHitbox.x = player.x + 10;
+    playerHitbox.y = player.y + 0;
+    // Table collision
+    if (window.isColliding(playerHitbox, window.tableHitbox)) {
+        let dx = player.x - prevX;
+        let dy = player.y - prevY;
+        while (window.isColliding(playerHitbox, window.tableHitbox)) {
+            if (dx !== 0) player.x -= Math.sign(dx);
+            if (dy !== 0) player.y -= Math.sign(dy);
+            playerHitbox.x = player.x + 10;
+            playerHitbox.y = player.y + 0;
+            if (player.x === prevX && player.y === prevY) break;
+        }
+    }
+    // Animation
+    if (now - window.animTimer > window.ANIM_INTERVAL) {
+        window.animFrame = 1 - window.animFrame;
+        window.animTimer = now;
+    }
+}
+let imagesLoaded = 0;
+window.spriteSheet.onload = window.tableImg.onload = function() {
+  imagesLoaded++;
+  if (imagesLoaded === 2) {
+    requestAnimationFrame(gameLoop);
+    if (window.AudioManager) {
+      window.AudioManager.playMusic();
+    }
+  }
+};
+let textboxPage = 0; // already declared above; safe to keep as-is
+let textboxLines = [];
+let textboxHasMore = false;
+
+function wrapText(ctx, text, x, y, maxWidth, lineHeight, maxLines) {
+  const words = text.split(' ');
+  let line = '';
+  let lines = [];
+  for (let n = 0; n < words.length; n++) {
+    const testLine = line + words[n] + ' ';
+    const metrics = ctx.measureText(testLine);
+    const testWidth = metrics.width;
+    if (testWidth > maxWidth && n > 0) {
+      lines.push(line.trim());
+      line = words[n] + ' ';
+      if (lines.length === maxLines) break;
+    } else {
+      line = testLine;
+    }
+  }
+  if (lines.length < maxLines) lines.push(line.trim());
+  return lines;
+}
+
+function drawTextbox(ctx, text, font, color, frame, page) {
+  ctx.save();
+  ctx.font = font;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  const margin = frame.margin;
+  const boxX = margin;
+  const boxY = ctx.canvas.height - frame.height - margin;
+  const boxWidth = ctx.canvas.width - margin * 2;
+  const boxHeight = frame.height;
+  // Frame
+  ctx.fillStyle = frame.fill;
+  ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+  ctx.strokeStyle = frame.outline;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+  // Text
+  ctx.fillStyle = color;
+  const lineHeight = 24; // Adjust as needed
+  const maxLines = Math.floor(boxHeight / lineHeight) - 2;
+  const allLines = [];
+  let words = text.split(' ');
+  let currentLine = '';
+  for (let i = 0; i < words.length; i++) {
+    let testLine = currentLine + words[i] + ' ';
+    let testWidth = ctx.measureText(testLine).width;
+    if (testWidth > boxWidth - margin * 2 && currentLine !== '') {
+      allLines.push(currentLine.trim());
+      currentLine = words[i] + ' ';
+    } else {
+      currentLine = testLine;
+    }
+  }
+  if (currentLine) allLines.push(currentLine.trim());
+  const totalPages = Math.ceil(allLines.length / maxLines);
+  const startLine = page * maxLines;
+  const linesToShow = allLines.slice(startLine, startLine + maxLines);
+  for (let i = 0; i < linesToShow.length; i++) {
+    ctx.fillText(linesToShow[i], boxX + margin, boxY + margin + i * lineHeight);
+  }
+  // More indicator
+  if (startLine + maxLines < allLines.length) {
+    ctx.fillStyle = frame.outline;
+    ctx.beginPath();
+    ctx.moveTo(boxX + margin, boxY + boxHeight - margin / 2);
+    ctx.lineTo(boxX + margin + 12, boxY + boxHeight - margin / 2);
+    ctx.lineTo(boxX + margin + 6, boxY + boxHeight - margin / 2 + 8);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+  return { totalPages };
+}
+</script>
+</body>
+</html>

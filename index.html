@@ -433,6 +433,16 @@
     });
     // Final menu input listener (only one should exist)
     document.addEventListener('keydown', window.gameMenu.handleInput);
+
+    // Refresh confirmation popup
+    window.addEventListener('beforeunload', (e) => {
+      // Show popup only if game is started AND menu is NOT active
+      if (window.gameMenu && window.gameMenu.isGameStarted() && !window.gameMenu.state.isActive) {
+        e.preventDefault();
+        e.returnValue = 'Are you sure you want to refresh the page? Unsaved data will be lost!';
+        return e.returnValue;
+      }
+    });
   </script>
 </body>
 

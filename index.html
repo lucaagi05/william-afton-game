@@ -32,42 +32,46 @@
     <canvas id="gameCanvas" width="600" height="600"></canvas>
   </div>
   <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // --- State Variables ---
     let musicStarted = false;
+    const player = { x: 180, y: 140, width: 50, height: 50, color: '#fff', speed: 18 };
+    window.player = player;
+    const keys = {};
+    const moveDelay = 200;
+    let lastMoveTime = 0;
+    const SHOW_HITBOX = true;
+    const playerHitbox = { x: player.x + 30, y: player.y + 30, width: 30, height: 50 };
+    let activeInteraction = null;
+    let choiceIndex = 0;
+    let textboxPage = 0;
+    let textboxLines = [];
+    let textboxHasMore = false;
+    let imagesLoaded = 0;
+
+    // --- Refresh Confirmation Popup ---
+    window.addEventListener('beforeunload', (e) => {
+      if (window.gameMenu && window.gameMenu.isGameStarted() && !window.gameMenu.state.isActive) {
+        e.preventDefault();
+        e.returnValue = 'Are you sure you want to refresh the page? Unsaved data will be lost!';
+        return e.returnValue;
+      }
+    });
+
+    // --- Global Input Listeners ---
+    document.addEventListener('keydown', e => keys[e.key] = true);
+    document.addEventListener('keyup', e => keys[e.key] = false);
+
     document.addEventListener('keydown', () => {
       if (!musicStarted && window.AudioManager) {
         window.AudioManager.playMusic();
         musicStarted = true;
       }
     });
-    const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
 
-    // inside the main <script> tag: expose player and add choice logic
-    const player = {
-      x: 180,
-      y: 140,
-      width: 50,
-      height: 50,
-      color: '#fff',
-      speed: 18
-    };
-    window.player = player; // expose for menu save/load
-    const keys = {};
-    document.addEventListener('keydown', e => keys[e.key] = true);
-    document.addEventListener('keyup', e => keys[e.key] = false);
-    const moveDelay = 200;
-    let lastMoveTime = 0;
-    const SHOW_HITBOX = true;
-    const playerHitbox = {
-      x: player.x + 30,
-      y: player.y + 30,
-      width: 30,
-      height: 50
-    };
-
-    let activeInteraction = null;
-    // (remove duplicate declaration; textboxPage is already declared later in the script)
-    let choiceIndex = 0;
+    // Interaction and Menu Key Handling
     document.addEventListener('keydown', function (e) {
       // Open menu with X anytime
       if (e.key.toLowerCase() === 'x') {
@@ -110,12 +114,10 @@
             window.AudioManager.playTextboxSound();
             const selected = c.options[choiceIndex];
             if (selected === 'Yes') {
-              // Save runtime state to slot 1
               window.currentCheckpoint = activeInteraction.id || 'checkpoint';
               if (window.gameMenu && window.gameMenu.saveGame) {
                 window.gameMenu.saveGame(1);
               }
-              // Show confirmation text box
               activeInteraction = {
                 type: 'text',
                 text: {
@@ -127,7 +129,6 @@
               };
               textboxPage = 0;
             } else {
-              // No -> close
               activeInteraction = null;
             }
           }
@@ -135,13 +136,12 @@
       }
     });
 
-    // draw() function: render checkpoint and choice UI
+    // --- Core Functions ---
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.strokeStyle = '#0ff';
       ctx.lineWidth = 4;
       ctx.strokeRect(2, 2, canvas.width - 4, canvas.height - 4);
-      // Layering logic
       if (player.y + player.height < window.tableHitbox.y + window.tableHitbox.height) {
         window.drawPlayer(ctx, player);
         window.drawTable(ctx);
@@ -151,7 +151,6 @@
       }
       window.drawCube(ctx);
       window.drawCheckpoint(ctx);
-
 
       if (SHOW_HITBOX) {
         ctx.save();
@@ -167,7 +166,7 @@
         ctx.strokeRect(window.checkpointRightHitbox.x, window.checkpointRightHitbox.y, window.checkpointRightHitbox.width, window.checkpointRightHitbox.height);
         ctx.restore();
       }
-      // Draw interaction UI
+
       if (activeInteraction && activeInteraction.type === 'text') {
         const t = activeInteraction.text;
         const margin = t.frame.margin;
@@ -187,12 +186,10 @@
         ctx.textAlign = 'left';
         const pageText = t.pages[textboxPage] || "";
         const lineHeight = 24;
-        const maxWidth = boxWidth - margin * 2;
-        const lines = wrapText(ctx, pageText, 0, 0, maxWidth, lineHeight, 10);
+        const lines = wrapText(ctx, pageText, 0, 0, boxWidth - margin * 2, lineHeight, 10);
         for (let i = 0; i < lines.length; i++) {
           ctx.fillText(lines[i], boxX + margin, boxY + margin + i * lineHeight);
         }
-        // More pages indicator
         if (textboxPage < t.pages.length - 1) {
           ctx.fillStyle = t.frame.outline;
           ctx.beginPath();
@@ -222,24 +219,20 @@
         ctx.fillStyle = c.color;
         ctx.textBaseline = 'top';
         ctx.textAlign = 'left';
-        // Prompt
         const lineHeight = 24;
-        const maxWidth = boxWidth - margin * 2;
-        const promptLines = wrapText(ctx, c.prompt, 0, 0, maxWidth, lineHeight, 4);
+        const promptLines = wrapText(ctx, c.prompt, 0, 0, boxWidth - margin * 2, lineHeight, 4);
         for (let i = 0; i < promptLines.length; i++) {
           ctx.fillText(promptLines[i], boxX + margin, boxY + margin + i * lineHeight);
         }
-        // Options
         ctx.font = '22px monospace';
         const baseY = boxY + margin + promptLines.length * lineHeight + 10;
         for (let i = 0; i < c.options.length; i++) {
-          const opt = c.options[i];
           ctx.fillStyle = i === choiceIndex ? '#0ff' : c.color;
-          ctx.fillText(opt, boxX + margin, baseY + i * (lineHeight + 4));
+          ctx.fillText(c.options[i], boxX + margin, baseY + i * (lineHeight + 4));
         }
         ctx.restore();
       }
-      // --- Scanline effect ---
+
       ctx.save();
       ctx.globalAlpha = 1.0;
       ctx.strokeStyle = '#000';
@@ -253,8 +246,6 @@
       ctx.restore();
     }
 
-
-    // update gameLoop to respect menu state and add menu key handling
     function gameLoop() {
       if (window.gameMenu && window.gameMenu.state.isActive) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -269,42 +260,25 @@
       }
     }
 
-
-
     function update() {
       const now = Date.now();
-      let moved = false;
       const prevX = player.x;
       const prevY = player.y;
       if (now - lastMoveTime >= moveDelay && !activeInteraction) {
         if (keys['ArrowUp'] || keys['w'] || keys['W']) {
-          player.y -= player.speed;
-          window.playerDir = 'up';
-          lastMoveTime = now;
-          moved = true;
+          player.y -= player.speed; window.playerDir = 'up'; lastMoveTime = now;
         } else if (keys['ArrowDown'] || keys['s'] || keys['S']) {
-          player.y += player.speed;
-          window.playerDir = 'down';
-          lastMoveTime = now;
-          moved = true;
+          player.y += player.speed; window.playerDir = 'down'; lastMoveTime = now;
         } else if (keys['ArrowLeft'] || keys['a'] || keys['A']) {
-          player.x -= player.speed;
-          window.playerDir = 'left';
-          lastMoveTime = now;
-          moved = true;
+          player.x -= player.speed; window.playerDir = 'left'; lastMoveTime = now;
         } else if (keys['ArrowRight'] || keys['d'] || keys['D']) {
-          player.x += player.speed;
-          window.playerDir = 'right';
-          lastMoveTime = now;
-          moved = true;
+          player.x += player.speed; window.playerDir = 'right'; lastMoveTime = now;
         }
         player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
         player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
       }
-      // Update hitbox position to follow player
       playerHitbox.x = player.x + 10;
       playerHitbox.y = player.y + 0;
-      // Table collision
       if (window.isColliding(playerHitbox, window.tableHitbox)) {
         let dx = player.x - prevX;
         let dy = player.y - prevY;
@@ -316,25 +290,11 @@
           if (player.x === prevX && player.y === prevY) break;
         }
       }
-      // Animation
       if (now - window.animTimer > window.ANIM_INTERVAL) {
         window.animFrame = 1 - window.animFrame;
         window.animTimer = now;
       }
     }
-    let imagesLoaded = 0;
-    window.spriteSheet.onload = window.tableImg.onload = function () {
-      imagesLoaded++;
-      if (imagesLoaded === 2) {
-        requestAnimationFrame(gameLoop);
-        if (window.AudioManager) {
-          window.AudioManager.playMusic();
-        }
-      }
-    };
-    let textboxPage = 0; // already declared above; safe to keep as-is
-    let textboxLines = [];
-    let textboxHasMore = false;
 
     function wrapText(ctx, text, x, y, maxWidth, lineHeight, maxLines) {
       const words = text.split(' ');
@@ -342,9 +302,7 @@
       let lines = [];
       for (let n = 0; n < words.length; n++) {
         const testLine = line + words[n] + ' ';
-        const metrics = ctx.measureText(testLine);
-        const testWidth = metrics.width;
-        if (testWidth > maxWidth && n > 0) {
+        if (ctx.measureText(testLine).width > maxWidth && n > 0) {
           lines.push(line.trim());
           line = words[n] + ' ';
           if (lines.length === maxLines) break;
@@ -356,93 +314,30 @@
       return lines;
     }
 
-    function drawTextbox(ctx, text, font, color, frame, page) {
-      ctx.save();
-      ctx.font = font;
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'top';
-      const margin = frame.margin;
-      const boxX = margin;
-      const boxY = ctx.canvas.height - frame.height - margin;
-      const boxWidth = ctx.canvas.width - margin * 2;
-      const boxHeight = frame.height;
-      // Frame
-      ctx.fillStyle = frame.fill;
-      ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
-      ctx.strokeStyle = frame.outline;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
-      // Text
-      ctx.fillStyle = color;
-      const lineHeight = 24; // Adjust as needed
-      const maxLines = Math.floor(boxHeight / lineHeight) - 2;
-      const allLines = [];
-      let words = text.split(' ');
-      let currentLine = '';
-      for (let i = 0; i < words.length; i++) {
-        let testLine = currentLine + words[i] + ' ';
-        let testWidth = ctx.measureText(testLine).width;
-        if (testWidth > boxWidth - margin * 2 && currentLine !== '') {
-          allLines.push(currentLine.trim());
-          currentLine = words[i] + ' ';
-        } else {
-          currentLine = testLine;
-        }
+    // --- Image Loading and Start ---
+    function checkReady() {
+      imagesLoaded++;
+      if (imagesLoaded >= 2) {
+        requestAnimationFrame(gameLoop);
       }
-      if (currentLine) allLines.push(currentLine.trim());
-      const totalPages = Math.ceil(allLines.length / maxLines);
-      const startLine = page * maxLines;
-      const linesToShow = allLines.slice(startLine, startLine + maxLines);
-      for (let i = 0; i < linesToShow.length; i++) {
-        ctx.fillText(linesToShow[i], boxX + margin, boxY + margin + i * lineHeight);
-      }
-      // More indicator
-      if (startLine + maxLines < allLines.length) {
-        ctx.fillStyle = frame.outline;
-        ctx.beginPath();
-        ctx.moveTo(boxX + margin, boxY + boxHeight - margin / 2);
-        ctx.lineTo(boxX + margin + 12, boxY + boxHeight - margin / 2);
-        ctx.lineTo(boxX + margin + 6, boxY + boxHeight - margin / 2 + 8);
-        ctx.closePath();
-        ctx.fill();
-      }
-      ctx.restore();
-      return { totalPages };
     }
+    window.spriteSheet.onload = checkReady;
+    window.tableImg.onload = checkReady;
+    if (window.spriteSheet.complete) checkReady();
+    if (window.tableImg.complete) checkReady();
 
     // Click handling
     canvas.addEventListener('click', (e) => {
       const rect = canvas.getBoundingClientRect();
-      const scaleX = canvas.width / rect.width;
-      const scaleY = canvas.height / rect.height;
-      const clickX = (e.clientX - rect.left) * scaleX;
-      const clickY = (e.clientY - rect.top) * scaleY;
-
-      // Menu click handling
+      const clickX = (e.clientX - rect.left) * (canvas.width / rect.width);
+      const clickY = (e.clientY - rect.top) * (canvas.height / rect.height);
       if (window.gameMenu && window.gameMenu.state.isActive) {
         window.gameMenu.handleClick(clickX, clickY);
         return;
       }
-
-      // Gameplay button handling (moved to menu, so restricted here)
-      const btn = window.downloadBtn;
-      if (clickX >= btn.x && clickX <= btn.x + btn.width &&
-        clickY >= btn.y && clickY <= btn.y + btn.height) {
-        // No-op for gameplay screen
-      }
     });
-    // Final menu input listener (only one should exist)
+
     document.addEventListener('keydown', window.gameMenu.handleInput);
-
-    // Refresh confirmation popup
-    window.addEventListener('beforeunload', (e) => {
-      // Show popup only if game is started AND menu is NOT active
-      if (window.gameMenu && window.gameMenu.isGameStarted() && !window.gameMenu.state.isActive) {
-        e.preventDefault();
-        e.returnValue = 'Are you sure you want to refresh the page? Unsaved data will be lost!';
-        return e.returnValue;
-      }
-    });
   </script>
 </body>
 

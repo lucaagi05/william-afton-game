@@ -239,3 +239,20 @@ window.gameMenu = {
     importSaveFromFile: importSaveFromFile,
     isGameStarted: () => gameStarted
 };
+
+// --- Refresh Confirmation Popup ---
+// Warns the user before leaving/refreshing mid-game
+window.addEventListener('beforeunload', (e) => {
+    if (window.gameMenu.isGameStarted() && !menuState.isActive) {
+        e.preventDefault();
+        e.returnValue = 'Are you sure you want to refresh the page? Unsaved data will be lost!';
+        return e.returnValue;
+    }
+});
+
+// --- Open Menu with X key ---
+document.addEventListener('keydown', function (e) {
+    if (e.key.toLowerCase() === 'x') {
+        menuState.isActive = true;
+    }
+});

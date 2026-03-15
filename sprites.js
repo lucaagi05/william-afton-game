@@ -31,12 +31,6 @@ const downloadBtn = {
   x: 540, y: 540, width: 40, height: 40
 };
 
-// Player hitbox definition and update function
-window.playerHitbox = { x: 0, y: 0, width: 30, height: 50 };
-window.updatePlayerHitbox = function (player) {
-  window.playerHitbox.x = player.x + 10;
-  window.playerHitbox.y = player.y + 0;
-};
 
 function drawPlayer(ctx, player) {
   if (spriteSheet.complete) {
@@ -62,12 +56,8 @@ function isColliding(a, b) {
     a.y + a.height > b.y;
 }
 
-// Export for use in index.html
+// Export local constants for use in other modules
 window.SPRITE_MAP = SPRITE_MAP;
-window.playerDir = playerDir;
-window.animFrame = animFrame;
-window.animTimer = animTimer;
-window.ANIM_INTERVAL = ANIM_INTERVAL;
 window.spriteSheet = spriteSheet;
 window.tableImg = tableImg;
 window.downloadIcon = downloadIcon;

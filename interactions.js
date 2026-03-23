@@ -182,12 +182,11 @@ window.interactions = [
     trigger: function () { return true; },
     text: {
       pages: [
-        "Hi cod.",
-        "You may be wondering why I revived William Afton's account.",
-        "Mainly because Discord sent me an email reminding me the account was going to be deleted",
-        "but also to retrieve some old stuff I made for the arg...",
-        "like this game.",
-        "Scrapped it out of disinterst...do you think it has potential for something?"
+        "It's a birthday card.",
+        "The text says:",
+        "\"Happy birthday Evan!\"",
+        "And there's a heart drawn next to it.",
+        "It's not signed, so I don't know who it's from.",
       ],
       font: '25px monospace',
       color: '#fff',

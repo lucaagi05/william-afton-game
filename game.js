@@ -18,7 +18,10 @@ window.player = player;
 const keys = {};
 const BASE_MOVE_DELAY = 200;
 let lastMoveTime = 0;
-const SHOW_HITBOX = true;
+
+// Debug flags (toggled by debug menu)
+window.showHitboxes = false;
+window.showTileGrid = false;
 
 const playerHitbox = { x: player.x + 10, y: player.y, width: 30, height: 50 };
 window.playerHitbox = playerHitbox;
@@ -121,6 +124,33 @@ function drawRoomElements() {
   }
 }
 
+// --- Tile Grid Drawing ---
+function drawTileGrid() {
+  if (!window.showTileGrid) return;
+  const room = window.MapManager.current();
+  const rw = room.pixelWidth || 600;
+  const rh = room.pixelHeight || 600;
+  const step = 18; // STEP from entities.js
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(0, 255, 0, 0.3)';
+  ctx.lineWidth = 0.5;
+
+  for (let x = 0; x <= rw; x += step) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, rh);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= rh; y += step) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(rw, y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 // --- Core Rendering ---
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -134,8 +164,9 @@ function draw() {
 
   drawBorder();
   drawRoomElements();
+  drawTileGrid();
 
-  if (SHOW_HITBOX) {
+  if (window.showHitboxes) {
     ctx.save();
     ctx.lineWidth = 2;
     ctx.strokeStyle = '#f00';
@@ -171,6 +202,16 @@ function draw() {
   // --- Canvas-global UI ---
   if (window.Minimap) window.Minimap.draw(ctx);
   if (window.Inventory) window.Inventory.draw(ctx);
+
+  // Exit confirmation popup (canvas-global)
+  if (window.gameMenu && window.gameMenu.showExitConfirm) {
+    window.gameMenu.drawExitConfirm(ctx);
+  }
+
+  // Debug menu overlay (canvas-global)
+  if (window.DebugMenu && window.DebugMenu.isOpen) {
+    window.DebugMenu.draw(ctx);
+  }
 
   // Scanlines (full canvas)
   ctx.save();
@@ -213,9 +254,11 @@ function update() {
   const speed = sprinting ? player.speed * 2 : player.speed;
   const moveDelay = sprinting ? BASE_MOVE_DELAY / 2 : BASE_MOVE_DELAY;
 
-  // Block movement when inventory or interaction is open
+  // Block movement when inventory, interaction, exit popup, or debug menu is open
   const blocked = window.InteractionManager.activeInteraction ||
-                  (window.Inventory && window.Inventory.isOpen);
+                  (window.Inventory && window.Inventory.isOpen) ||
+                  (window.gameMenu && window.gameMenu.showExitConfirm) ||
+                  (window.DebugMenu && window.DebugMenu.isOpen);
 
   if (now - lastMoveTime >= moveDelay && !blocked) {
     if (keys['ArrowUp'] || keys['w'] || keys['W']) {

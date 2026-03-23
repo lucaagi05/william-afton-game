@@ -26,8 +26,9 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight, maxLines) {
 
 // --- Interaction Key Handler ---
 document.addEventListener('keydown', function (e) {
-  if (e.key.toLowerCase() === 'x') return;
   if (window.gameMenu && window.gameMenu.state.isActive) return;
+  if (window.gameMenu && window.gameMenu.showExitConfirm) return;
+  if (window.DebugMenu && window.DebugMenu.isOpen) return;
   if (window.Inventory && window.Inventory.isOpen) return;
 
   if (e.key === 'Enter' && !activeInteraction) {

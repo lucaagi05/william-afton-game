@@ -106,6 +106,8 @@ function drawInventory(ctx) {
 // Inventory key handler
 document.addEventListener('keydown', function (e) {
   if (window.gameMenu && window.gameMenu.state.isActive) return;
+  if (window.gameMenu && window.gameMenu.showExitConfirm) return;
+  if (window.DebugMenu && window.DebugMenu.isOpen) return;
 
   if (e.key.toLowerCase() === 'i') {
     if (inventoryShowingDesc) { inventoryShowingDesc = false; return; }
@@ -143,5 +145,11 @@ window.Inventory = {
     }
   },
   has(itemId) { return inventoryItems.includes(itemId); },
+  clear() {
+    inventoryItems.length = 0;
+    inventorySelectedIndex = 0;
+    inventoryShowingDesc = false;
+    inventoryOpen = false;
+  },
   draw: drawInventory
 };

@@ -1,4 +1,4 @@
-// menu.js - Menu system: video background, controls popup, save/load
+// menu.js - Menu system: video background, controls popup, save/load, exit confirmation
 
 const GAME_TITLE = 'FNAF Minigame';
 const SAVE_SLOTS = 3;
@@ -8,6 +8,8 @@ let gameStarted = false;
 let currentSaveSlot = null;
 let showingControls = false;        // controls popup state
 let firstStart = true;              // first time pressing Start
+let showExitConfirm = false;        // ESC confirmation popup
+let exitConfirmSelected = 0;        // 0 = Yes, 1 = No
 
 const menuVideo = document.getElementById('menuVideo');
 
@@ -16,11 +18,7 @@ const menuState = {
   currentMenu: 'root',
   selectedOption: 0,
   options: {
-    root: [
-      { text: 'Start', enabled: true },
-      { text: 'Load', enabled: true },
-      { text: 'Extra', enabled: false }
-    ],
+    root: [],   // built dynamically by rebuildMenuOptions()
     load: [
       { text: 'Load from Browser', enabled: true },
       { text: 'Load from File', enabled: true },
@@ -28,6 +26,38 @@ const menuState = {
     ]
   }
 };
+
+// --- Build root menu options based on save state ---
+function hasSaveData() {
+  for (let i = 1; i <= SAVE_SLOTS; i++) {
+    if (localStorage.getItem(SAVE_KEY_PREFIX + i)) return true;
+  }
+  return false;
+}
+
+function rebuildMenuOptions() {
+  const hasSave = hasSaveData();
+  if (hasSave) {
+    menuState.options.root = [
+      { text: 'Load', enabled: true },
+      { text: 'Extra', enabled: false },
+      { text: 'Erase save data', enabled: true }
+    ];
+  } else {
+    menuState.options.root = [
+      { text: 'Start', enabled: true },
+      { text: 'Load', enabled: true },
+      { text: 'Extra', enabled: false }
+    ];
+  }
+  // Clamp selected option
+  if (menuState.selectedOption >= menuState.options.root.length) {
+    menuState.selectedOption = 0;
+  }
+}
+
+// Initialize on load
+rebuildMenuOptions();
 
 // --- Video control ---
 function ensureVideoPlaying() {
@@ -47,15 +77,7 @@ function saveGame(slot) {
   };
   localStorage.setItem(SAVE_KEY_PREFIX + slot, JSON.stringify(gameData));
   currentSaveSlot = slot;
-
-  const extra = menuState.options.root.find(o => o.text === 'Extra');
-  if (extra) extra.enabled = true;
-  if (!menuState.options.root.find(o => o.text === 'Erase Data')) {
-    menuState.options.root.push({ text: 'Erase Data', enabled: true });
-  }
-  if (!menuState.options.root.find(o => o.text === 'Save To File')) {
-    menuState.options.root.push({ text: 'Save To File', enabled: true });
-  }
+  rebuildMenuOptions();
 }
 
 function loadGame(slot) {
@@ -69,9 +91,27 @@ function loadGame(slot) {
       d.inventory.forEach(id => window.Inventory.add(id));
     }
     window.currentCheckpoint = d.checkpoint;
+
+    // Sync collected flags with inventory to prevent duplication
+    syncCollectedFlags();
+
     return true;
   }
   return false;
+}
+
+// Sync entity collected flags with current inventory
+function syncCollectedFlags() {
+  if (!window.Entities || !window.Inventory) return;
+  const itemMap = {
+    'key_item': 'key',
+    'candy_item': 'candy'
+  };
+  for (const ent of window.Entities) {
+    if (ent.type === 'item' && itemMap[ent.id] !== undefined) {
+      ent.collected = window.Inventory.has(itemMap[ent.id]);
+    }
+  }
 }
 
 function exportSaveToFile(gameData, suggestedName = 'fnaf_save.json') {
@@ -102,15 +142,47 @@ function importSaveFromFile() {
         data.inventory.forEach(id => window.Inventory.add(id));
       }
       window.currentCheckpoint = data.checkpoint || null;
+      syncCollectedFlags();
       menuState.isActive = false;
       gameStarted = true;
       menuState.currentMenu = 'root';
+      rebuildMenuOptions();
       alert('Save loaded from file.');
     } catch (err) {
       alert('Invalid save file.');
     }
   };
   input.click();
+}
+
+// --- Reset game state when returning to menu ---
+function resetGameState() {
+  // Reset player position
+  if (window.player) {
+    window.player.x = 180;
+    window.player.y = 140;
+  }
+  // Reset room
+  if (window.MapManager) {
+    window.MapManager.currentRoom = 'room1';
+  }
+  // Clear inventory
+  if (window.Inventory && window.Inventory.clear) {
+    window.Inventory.clear();
+  }
+  // Reset all collected flags
+  if (window.Entities) {
+    for (const ent of window.Entities) {
+      if (ent.type === 'item' && 'collected' in ent) {
+        ent.collected = false;
+      }
+    }
+  }
+  // Reset locked doors
+  const gardenDoor = window.Entities && window.Entities.find(e => e.id === 'door_to_garden');
+  if (gardenDoor) gardenDoor.locked = true;
+
+  window.currentCheckpoint = null;
 }
 
 // --- Controls Popup Drawing ---
@@ -140,7 +212,7 @@ function drawControlsPopup(ctx) {
     ['Enter',         'Interact'],
     ['I',             'Inventory'],
     ['H',             'Toggle Map'],
-    ['X',             'Open Menu'],
+    ['Esc',           'Open Menu'],
     ['F11',           'Fullscreen']
   ];
 
@@ -160,6 +232,44 @@ function drawControlsPopup(ctx) {
   ctx.fillStyle = 'rgba(255,255,255,0.35)';
   ctx.textAlign = 'center';
   ctx.fillText('Press Enter to start', cw / 2, by + boxH - 30);
+}
+
+// --- Exit Confirmation Popup Drawing ---
+function drawExitConfirm(ctx) {
+  const cw = ctx.canvas.width;
+  const ch = ctx.canvas.height;
+  const boxW = Math.min(520, cw - 60);
+  const boxH = 180;
+  const bx = (cw - boxW) / 2;
+  const by = (ch - boxH) / 2;
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.9)';
+  ctx.fillRect(bx, by, boxW, boxH);
+  ctx.strokeStyle = '#f44';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(bx, by, boxW, boxH);
+
+  ctx.font = '16px monospace';
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText('Are you sure you want to go back', cw / 2, by + 20);
+  ctx.fillText('to main menu?', cw / 2, by + 42);
+
+  ctx.font = '13px monospace';
+  ctx.fillStyle = '#f88';
+  ctx.fillText('Unsaved data will be lost!', cw / 2, by + 70);
+
+  const optY = by + 110;
+  const opts = ['Yes', 'No'];
+  ctx.font = '22px monospace';
+  for (let i = 0; i < opts.length; i++) {
+    const ox = cw / 2 + (i === 0 ? -70 : 70);
+    ctx.fillStyle = i === exitConfirmSelected ? '#0ff' : '#888';
+    ctx.fillText(opts[i], ox, optY);
+  }
+  ctx.restore();
 }
 
 // --- Menu Drawing ---
@@ -200,8 +310,8 @@ function drawMenu(ctx) {
     ctx.fillText(option.text, cw / 2, startY + (index * 60));
   });
 
-  // Download icon
-  if (window.downloadIcon && window.downloadIcon.complete) {
+  // Download icon — only if save data exists
+  if (hasSaveData() && window.downloadIcon && window.downloadIcon.complete) {
     const btn = window.downloadBtn;
     btn.x = cw - 60;
     btn.y = ch - 60;
@@ -213,6 +323,40 @@ function drawMenu(ctx) {
 
 // --- Menu Input ---
 function handleMenuInput(e) {
+  // Exit confirmation popup handler (in-game, not in menu)
+  if (showExitConfirm) {
+    if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+      exitConfirmSelected = 0;
+    } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+      exitConfirmSelected = 1;
+    } else if (e.key === 'Enter') {
+      if (exitConfirmSelected === 0) {
+        // Yes — go back to menu
+        showExitConfirm = false;
+        resetGameState();
+        menuState.isActive = true;
+        menuState.currentMenu = 'root';
+        menuState.selectedOption = 0;
+        rebuildMenuOptions();
+        gameStarted = false;
+        firstStart = true;
+      } else {
+        // No — dismiss
+        showExitConfirm = false;
+      }
+    } else if (e.key === 'Escape') {
+      showExitConfirm = false;
+    }
+    return;
+  }
+
+  // Esc key opens exit confirmation (in-game only)
+  if (e.key === 'Escape' && gameStarted && !menuState.isActive) {
+    showExitConfirm = true;
+    exitConfirmSelected = 1; // Default to "No"
+    return;
+  }
+
   if (!menuState.isActive) return;
 
   // Controls popup handler
@@ -251,33 +395,19 @@ function handleMenuInput(e) {
           menuState.currentMenu = 'load';
           menuState.selectedOption = 0;
           break;
-        case 'Erase Data':
+        case 'Erase save data':
           eraseAllData();
           break;
-        case 'Save To File': {
-          const slot1 = localStorage.getItem(SAVE_KEY_PREFIX + '1');
-          if (slot1) {
-            exportSaveToFile(JSON.parse(slot1), 'fnaf_save_synced.json');
-          } else {
-            exportSaveToFile({
-              playerX: window.player.x,
-              playerY: window.player.y,
-              checkpoint: window.currentCheckpoint || null
-            }, 'fnaf_save_current.json');
-          }
-          break;
-        }
       }
     } else if (menuState.currentMenu === 'load') {
       switch (option.text) {
         case 'Load from Browser': {
-          const slot = prompt('Load slot (1-3):', '1');
-          if (slot && loadGame(slot)) {
+          if (loadGame('1')) {
             menuState.isActive = false;
             gameStarted = true;
             menuState.currentMenu = 'root';
-          } else if (slot) {
-            alert('No save in slot ' + slot);
+          } else {
+            alert('No save data found.');
           }
           break;
         }
@@ -286,7 +416,8 @@ function handleMenuInput(e) {
           break;
         case 'Back':
           menuState.currentMenu = 'root';
-          menuState.selectedOption = 1;
+          menuState.selectedOption = 0;
+          rebuildMenuOptions();
           break;
       }
     }
@@ -295,18 +426,13 @@ function handleMenuInput(e) {
 
 function handleMenuClick(clickX, clickY) {
   if (!menuState.isActive) return false;
+  if (!hasSaveData()) return false;  // Hide download button if no save
   const btn = window.downloadBtn;
   if (clickX >= btn.x && clickX <= btn.x + btn.width &&
       clickY >= btn.y && clickY <= btn.y + btn.height) {
     const slot1 = localStorage.getItem(SAVE_KEY_PREFIX + '1');
     if (slot1) {
       exportSaveToFile(JSON.parse(slot1), 'fnaf_save_synced.json');
-    } else {
-      exportSaveToFile({
-        playerX: window.player.x,
-        playerY: window.player.y,
-        checkpoint: window.currentCheckpoint || null
-      }, 'fnaf_save_current.json');
     }
     return true;
   }
@@ -317,21 +443,26 @@ function eraseAllData() {
   for (let i = 1; i <= SAVE_SLOTS; i++) {
     localStorage.removeItem(SAVE_KEY_PREFIX + i);
   }
-  menuState.options.root = menuState.options.root.filter(o => o.text !== 'Erase Data' && o.text !== 'Save To File');
-  const extra = menuState.options.root.find(o => o.text === 'Extra');
-  if (extra) extra.enabled = false;
+  rebuildMenuOptions();
 }
 
 window.gameMenu = {
   state: menuState,
   draw: drawMenu,
+  drawExitConfirm: drawExitConfirm,
   handleInput: handleMenuInput,
   handleClick: handleMenuClick,
   saveGame: saveGame,
   loadGame: loadGame,
   exportSaveToFile: exportSaveToFile,
   importSaveFromFile: importSaveFromFile,
-  isGameStarted: () => gameStarted
+  isGameStarted: () => gameStarted,
+  get showExitConfirm() { return showExitConfirm; },
+  set showExitConfirm(v) { showExitConfirm = v; },
+  resetGameState: resetGameState,
+  rebuildMenuOptions: rebuildMenuOptions,
+  setGameStarted(v) { gameStarted = v; },
+  setFirstStart(v) { firstStart = v; }
 };
 
 // Refresh confirmation
@@ -340,12 +471,5 @@ window.addEventListener('beforeunload', (e) => {
     e.preventDefault();
     e.returnValue = 'Are you sure you want to refresh the page? Unsaved data will be lost!';
     return e.returnValue;
-  }
-});
-
-// Open menu with X key
-document.addEventListener('keydown', function (e) {
-  if (e.key.toLowerCase() === 'x') {
-    menuState.isActive = true;
   }
 });

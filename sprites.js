@@ -18,12 +18,6 @@ const SPRITE_HEIGHT = 160;
 
 const tableImg = new Image();
 tableImg.src = 'sprites/party_table.png';
-const table = {
-  x: 120, y: -50, width: 300, height: 300
-};
-const tableHitbox = {
-  x: 125.5, y: 50, width: 290, height: 45
-};
 
 const downloadIcon = new Image();
 downloadIcon.src = 'sprites/download.png';
@@ -43,11 +37,7 @@ function drawPlayer(ctx, player) {
   }
 }
 
-function drawTable(ctx) {
-  if (tableImg.complete) {
-    ctx.drawImage(tableImg, table.x, table.y, table.width, table.height);
-  }
-}
+
 
 function isColliding(a, b) {
   return a.x < b.x + b.width &&
@@ -57,70 +47,11 @@ function isColliding(a, b) {
 }
 
 // Export local constants for use in other modules
+// Export local constants for use in other modules
 window.SPRITE_MAP = SPRITE_MAP;
 window.spriteSheet = spriteSheet;
 window.tableImg = tableImg;
 window.downloadIcon = downloadIcon;
 window.downloadBtn = downloadBtn;
-window.table = table;
-window.tableHitbox = tableHitbox;
 window.drawPlayer = drawPlayer;
-window.drawTable = drawTable;
 window.isColliding = isColliding;
-
-// Adjustable interaction box size
-window.cubeInteractionBoxMargin = 20; // Change this value to adjust size
-
-const cubeItem = {
-  x: 250, y: 60, width: 20, height: 20, color: '#0ff'
-};
-function getCubeInteractionBox() {
-  const m = window.cubeInteractionBoxMargin;
-  return {
-    x: cubeItem.x - m,
-    y: cubeItem.y - m,
-    width: cubeItem.width + m * 2,
-    height: cubeItem.height + m * 2
-  };
-}
-window.cubeItem = cubeItem;
-window.getCubeInteractionBox = getCubeInteractionBox;
-
-// drawCube(ctx) and new drawCheckpoint(ctx)
-function drawCube(ctx) {
-  ctx.save();
-  ctx.fillStyle = cubeItem.color;
-  ctx.fillRect(cubeItem.x, cubeItem.y, cubeItem.width, cubeItem.height);
-  // Draw interaction box
-  const ibox = window.getCubeInteractionBox();
-  ctx.strokeStyle = 'cyan';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(
-    window.cubeInteractionBox.x,
-    window.cubeInteractionBox.y,
-    window.cubeInteractionBox.width,
-    window.cubeInteractionBox.height
-  );
-  ctx.restore();
-}
-function drawCheckpoint(ctx) {
-  ctx.save();
-  ctx.shadowColor = '#f44';
-  ctx.shadowBlur = 15;
-  ctx.fillStyle = '#f00';
-  ctx.fillRect(window.checkpoint.x, window.checkpoint.y, window.checkpoint.width, window.checkpoint.height);
-  ctx.fillRect(window.checkpointRight.x, window.checkpointRight.y, window.checkpointRight.width, window.checkpointRight.height);
-  ctx.restore();
-}
-window.drawCube = drawCube;
-window.cubeInteractionBox = {
-  x: 250, // adjust as needed
-  y: 45,  // adjust as needed
-  width: 20, // adjust as needed
-  height: 51 // adjust as needed
-};
-window.checkpoint = { x: 30, y: 260, width: 20, height: 20 };
-window.checkpointHitbox = { x: 25, y: 255, width: 30, height: 30 };
-window.checkpointRight = { x: 550, y: 260, width: 20, height: 20 };
-window.checkpointRightHitbox = { x: 545, y: 255, width: 30, height: 30 };
-window.drawCheckpoint = drawCheckpoint;

@@ -5,34 +5,36 @@
   <meta charset="UTF-8">
   <title>FNAF-Style 2D Minigame</title>
   <style>
-    body {
-      background: #111;
-      margin: 0;
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      background: #000;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
     }
-
-    .centered {
-      display: flex;
-      justify-content: center;
-      align-items: center;
+    canvas {
+      display: block;
+      width: 100vw;
       height: 100vh;
     }
-
-    canvas {
-      background: #222;
+    #menuVideo {
+      display: none;
     }
   </style>
-  <script src="sprites.js?v=2"></script>
-  <script src="audio.js?v=2"></script>
-  <script src="menu.js?v=2"></script>
-  <script src="interactions.js?v=2"></script>
-  <script src="game.js?v=2"></script>
+  <script src="sprites.js?v=3" defer></script>
+  <script src="audio.js?v=3" defer></script>
+  <script src="menu.js?v=3" defer></script>
+  <script src="entities.js?v=3" defer></script>
+  <script src="map.js?v=3" defer></script>
+  <script src="interactions.js?v=3" defer></script>
+  <script src="inventory.js?v=1" defer></script>
+  <script src="minimap.js?v=1" defer></script>
+  <script src="game.js?v=3" defer></script>
 </head>
 
 <body>
-  <div class="centered">
-    <canvas id="gameCanvas" width="600" height="600"></canvas>
-  </div>
-
+  <video id="menuVideo" src="mp4/menu_static.mp4" muted loop preload="auto"></video>
+  <canvas id="gameCanvas"></canvas>
 </body>
 
 </html>

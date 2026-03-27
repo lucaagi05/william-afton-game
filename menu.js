@@ -1,4 +1,4 @@
-// menu.js - Menu system: video background, controls popup, save/load, exit confirmation
+// menu.js - Menu system: video background, controls popup, save/load, pause menu, exit confirmation
 
 const GAME_TITLE = 'FNAF Minigame';
 const SAVE_SLOTS = 3;
@@ -6,10 +6,12 @@ const SAVE_KEY_PREFIX = 'fnaf_save_';
 
 let gameStarted = false;
 let currentSaveSlot = null;
-let showingControls = false;        // controls popup state
-let firstStart = true;              // first time pressing Start
-let showExitConfirm = false;        // ESC confirmation popup
-let exitConfirmSelected = 0;        // 0 = Yes, 1 = No
+let showingControls = false;
+let firstStart = true;
+let showExitConfirm = false;
+let exitConfirmSelected = 0; // 0 = Yes, 1 = No
+let showPauseMenu = false;
+let pauseMenuSelected = 0; // 0 = Return to Game, 1 = Exit
 
 const menuVideo = document.getElementById('menuVideo');
 
@@ -18,7 +20,7 @@ const menuState = {
   currentMenu: 'root',
   selectedOption: 0,
   options: {
-    root: [],   // built dynamically by rebuildMenuOptions()
+    root: [],
     load: [
       { text: 'Load from Browser', enabled: true },
       { text: 'Load from File', enabled: true },
@@ -50,13 +52,11 @@ function rebuildMenuOptions() {
       { text: 'Extra', enabled: false }
     ];
   }
-  // Clamp selected option
   if (menuState.selectedOption >= menuState.options.root.length) {
     menuState.selectedOption = 0;
   }
 }
 
-// Initialize on load
 rebuildMenuOptions();
 
 // --- Video control ---
@@ -73,7 +73,8 @@ function saveGame(slot) {
     playerY: window.player.y,
     currentRoom: window.MapManager ? window.MapManager.currentRoom : 'room1',
     inventory: window.Inventory ? window.Inventory.items.slice() : [],
-    checkpoint: window.currentCheckpoint || null
+    checkpoint: window.currentCheckpoint || null,
+    health: window.Health ? window.Health.currentHP : 10
   };
   localStorage.setItem(SAVE_KEY_PREFIX + slot, JSON.stringify(gameData));
   currentSaveSlot = slot;
@@ -88,24 +89,28 @@ function loadGame(slot) {
     window.player.y = d.playerY;
     if (d.currentRoom && window.MapManager) window.MapManager.currentRoom = d.currentRoom;
     if (d.inventory && window.Inventory) {
-      d.inventory.forEach(id => window.Inventory.add(id));
+      // New format: array of {id, quantity}
+      if (d.inventory.length > 0 && typeof d.inventory[0] === 'object') {
+        window.Inventory.setItems(d.inventory);
+      }
+      // Old format not supported — invalidated
+    }
+    if (d.health !== undefined && window.Health) {
+      window.Health.currentHP = d.health;
     }
     window.currentCheckpoint = d.checkpoint;
-
-    // Sync collected flags with inventory to prevent duplication
     syncCollectedFlags();
-
     return true;
   }
   return false;
 }
 
-// Sync entity collected flags with current inventory
 function syncCollectedFlags() {
   if (!window.Entities || !window.Inventory) return;
   const itemMap = {
     'key_item': 'key',
-    'candy_item': 'candy'
+    'candy_item': 'candy',
+    'candy_item_garden': 'candy'
   };
   for (const ent of window.Entities) {
     if (ent.type === 'item' && itemMap[ent.id] !== undefined) {
@@ -139,7 +144,12 @@ function importSaveFromFile() {
       if (typeof data.playerY === 'number') window.player.y = data.playerY;
       if (data.currentRoom && window.MapManager) window.MapManager.currentRoom = data.currentRoom;
       if (data.inventory && window.Inventory) {
-        data.inventory.forEach(id => window.Inventory.add(id));
+        if (data.inventory.length > 0 && typeof data.inventory[0] === 'object') {
+          window.Inventory.setItems(data.inventory);
+        }
+      }
+      if (data.health !== undefined && window.Health) {
+        window.Health.currentHP = data.health;
       }
       window.currentCheckpoint = data.checkpoint || null;
       syncCollectedFlags();
@@ -157,20 +167,16 @@ function importSaveFromFile() {
 
 // --- Reset game state when returning to menu ---
 function resetGameState() {
-  // Reset player position
   if (window.player) {
-    window.player.x = 180;
-    window.player.y = 140;
+    window.player.x = 3 * 50; // tile (3,2)
+    window.player.y = 2 * 50;
   }
-  // Reset room
   if (window.MapManager) {
     window.MapManager.currentRoom = 'room1';
   }
-  // Clear inventory
   if (window.Inventory && window.Inventory.clear) {
     window.Inventory.clear();
   }
-  // Reset all collected flags
   if (window.Entities) {
     for (const ent of window.Entities) {
       if (ent.type === 'item' && 'collected' in ent) {
@@ -178,10 +184,11 @@ function resetGameState() {
       }
     }
   }
-  // Reset locked doors
   const gardenDoor = window.Entities && window.Entities.find(e => e.id === 'door_to_garden');
   if (gardenDoor) gardenDoor.locked = true;
-
+  if (window.Health) {
+    window.Health.currentHP = window.Health.maxHP;
+  }
   window.currentCheckpoint = null;
 }
 
@@ -190,7 +197,7 @@ function drawControlsPopup(ctx) {
   const cw = ctx.canvas.width;
   const ch = ctx.canvas.height;
   const boxW = Math.min(500, cw - 60);
-  const boxH = 320;
+  const boxH = 340;
   const bx = (cw - boxW) / 2;
   const by = (ch - boxH) / 2;
 
@@ -211,13 +218,14 @@ function drawControlsPopup(ctx) {
     ['Space',         'Run'],
     ['Enter',         'Interact'],
     ['I',             'Inventory'],
+    ['Tab',           'Switch Inv. Tab'],
     ['H',             'Toggle Map'],
-    ['Esc',           'Open Menu'],
+    ['Esc',           'Pause'],
     ['F11',           'Fullscreen']
   ];
 
   ctx.font = '16px monospace';
-  const startY = by + 60;
+  const startY = by + 55;
   for (let i = 0; i < controls.length; i++) {
     const y = startY + i * 30;
     ctx.fillStyle = '#fff';
@@ -232,6 +240,40 @@ function drawControlsPopup(ctx) {
   ctx.fillStyle = 'rgba(255,255,255,0.35)';
   ctx.textAlign = 'center';
   ctx.fillText('Press Enter to start', cw / 2, by + boxH - 30);
+}
+
+// --- Pause Menu Drawing ---
+function drawPauseMenu(ctx) {
+  const cw = ctx.canvas.width;
+  const ch = ctx.canvas.height;
+  const boxW = Math.min(400, cw - 60);
+  const boxH = 180;
+  const bx = (cw - boxW) / 2;
+  const by = (ch - boxH) / 2;
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.85)';
+  ctx.fillRect(bx, by, boxW, boxH);
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(bx, by, boxW, boxH);
+
+  // PAUSE title
+  ctx.font = '36px monospace';
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText('PAUSE', cw / 2, by + 20);
+
+  // Options
+  const opts = ['Return to Game', 'Exit'];
+  ctx.font = '20px monospace';
+  const optY = by + 100;
+  for (let i = 0; i < opts.length; i++) {
+    ctx.fillStyle = i === pauseMenuSelected ? '#0ff' : '#888';
+    ctx.fillText(opts[i], cw / 2, optY + i * 35);
+  }
+  ctx.restore();
 }
 
 // --- Exit Confirmation Popup Drawing ---
@@ -276,7 +318,6 @@ function drawExitConfirm(ctx) {
 function drawMenu(ctx) {
   if (!menuState.isActive) return;
 
-  // Video background
   ensureVideoPlaying();
   if (menuVideo && menuVideo.readyState >= 2) {
     ctx.drawImage(menuVideo, 0, 0, ctx.canvas.width, ctx.canvas.height);
@@ -310,7 +351,6 @@ function drawMenu(ctx) {
     ctx.fillText(option.text, cw / 2, startY + (index * 60));
   });
 
-  // Download icon — only if save data exists
   if (hasSaveData() && window.downloadIcon && window.downloadIcon.complete) {
     const btn = window.downloadBtn;
     btn.x = cw - 60;
@@ -323,7 +363,7 @@ function drawMenu(ctx) {
 
 // --- Menu Input ---
 function handleMenuInput(e) {
-  // Exit confirmation popup handler (in-game, not in menu)
+  // Exit confirmation popup (after choosing Exit from pause menu)
   if (showExitConfirm) {
     if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
       exitConfirmSelected = 0;
@@ -331,8 +371,8 @@ function handleMenuInput(e) {
       exitConfirmSelected = 1;
     } else if (e.key === 'Enter') {
       if (exitConfirmSelected === 0) {
-        // Yes — go back to menu
         showExitConfirm = false;
+        showPauseMenu = false;
         resetGameState();
         menuState.isActive = true;
         menuState.currentMenu = 'root';
@@ -341,8 +381,8 @@ function handleMenuInput(e) {
         gameStarted = false;
         firstStart = true;
       } else {
-        // No — dismiss
         showExitConfirm = false;
+        // Go back to pause menu
       }
     } else if (e.key === 'Escape') {
       showExitConfirm = false;
@@ -350,10 +390,31 @@ function handleMenuInput(e) {
     return;
   }
 
-  // Esc key opens exit confirmation (in-game only)
+  // Pause menu handler
+  if (showPauseMenu) {
+    if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+      pauseMenuSelected = 0;
+    } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+      pauseMenuSelected = 1;
+    } else if (e.key === 'Enter') {
+      if (pauseMenuSelected === 0) {
+        // Return to Game
+        showPauseMenu = false;
+      } else {
+        // Exit — show confirmation
+        showExitConfirm = true;
+        exitConfirmSelected = 1; // Default to "No"
+      }
+    } else if (e.key === 'Escape') {
+      showPauseMenu = false;
+    }
+    return;
+  }
+
+  // Esc key opens pause menu (in-game only)
   if (e.key === 'Escape' && gameStarted && !menuState.isActive) {
-    showExitConfirm = true;
-    exitConfirmSelected = 1; // Default to "No"
+    showPauseMenu = true;
+    pauseMenuSelected = 0;
     return;
   }
 
@@ -426,7 +487,7 @@ function handleMenuInput(e) {
 
 function handleMenuClick(clickX, clickY) {
   if (!menuState.isActive) return false;
-  if (!hasSaveData()) return false;  // Hide download button if no save
+  if (!hasSaveData()) return false;
   const btn = window.downloadBtn;
   if (clickX >= btn.x && clickX <= btn.x + btn.width &&
       clickY >= btn.y && clickY <= btn.y + btn.height) {
@@ -450,6 +511,7 @@ window.gameMenu = {
   state: menuState,
   draw: drawMenu,
   drawExitConfirm: drawExitConfirm,
+  drawPauseMenu: drawPauseMenu,
   handleInput: handleMenuInput,
   handleClick: handleMenuClick,
   saveGame: saveGame,
@@ -459,6 +521,8 @@ window.gameMenu = {
   isGameStarted: () => gameStarted,
   get showExitConfirm() { return showExitConfirm; },
   set showExitConfirm(v) { showExitConfirm = v; },
+  get showPauseMenu() { return showPauseMenu; },
+  set showPauseMenu(v) { showPauseMenu = v; },
   resetGameState: resetGameState,
   rebuildMenuOptions: rebuildMenuOptions,
   setGameStarted(v) { gameStarted = v; },

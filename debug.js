@@ -1,14 +1,15 @@
 // debug.js - Debug menu system: accessible in-game only via "0" key
 
 (function () {
+  const TILE_SIZE = window.TILE_SIZE || 50;
   let debugOpen = false;
   let debugSelectedIndex = 0;
-  let debugSubMenu = null;      // null = main menu, 'rooms' = room list, 'entities' = entity list, 'entityEdit' = editing mode
+  let debugSubMenu = null;
   let debugSubSelected = 0;
 
   // Entity editor state
   let editingEntity = null;
-  let editMode = 'position';    // 'position', 'interaction', 'hitbox'
+  let editMode = 'position';
   let entityEditorActive = false;
 
   const MENU_OPTIONS = [
@@ -39,7 +40,6 @@
     const cw = ctx.canvas.width;
     const ch = ctx.canvas.height;
 
-    // Dim background
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.fillRect(0, 0, cw, ch);
@@ -50,7 +50,6 @@
       return;
     }
 
-    // Panel
     const panelW = 340;
     const panelH = debugSubMenu ? 400 : 340;
     const px = 30;
@@ -62,7 +61,6 @@
     ctx.fillRect(px, py, panelW, panelH);
     ctx.strokeRect(px, py, panelW, panelH);
 
-    // Title
     ctx.font = '20px monospace';
     ctx.fillStyle = '#0f0';
     ctx.textAlign = 'left';
@@ -80,7 +78,6 @@
       const names = ents.map(e => `${e.id} (${e.room})`);
       drawSubMenu(ctx, px, py + 55, panelW, 'Select Entity', names);
     } else {
-      // Main options
       ctx.font = '15px monospace';
       const startY = py + 55;
       for (let i = 0; i < MENU_OPTIONS.length; i++) {
@@ -89,13 +86,20 @@
         ctx.fillText(i === debugSelectedIndex ? '> ' + MENU_OPTIONS[i] : '  ' + MENU_OPTIONS[i], px + 15, y);
       }
 
-      // Status indicators
       ctx.font = '11px monospace';
       const statusY = startY + MENU_OPTIONS.length * 30 + 15;
       ctx.fillStyle = window.showHitboxes ? '#0f0' : '#555';
       ctx.fillText('Hitboxes: ' + (window.showHitboxes ? 'ON' : 'OFF'), px + 15, statusY);
       ctx.fillStyle = window.showTileGrid ? '#0f0' : '#555';
       ctx.fillText('Tile Grid: ' + (window.showTileGrid ? 'ON' : 'OFF'), px + 180, statusY);
+
+      // Show player tile position
+      if (window.player) {
+        const tileX = Math.floor(window.player.x / TILE_SIZE);
+        const tileY = Math.floor(window.player.y / TILE_SIZE);
+        ctx.fillStyle = '#0f0';
+        ctx.fillText('Player Tile: ' + tileX + ',' + tileY, px + 15, statusY + 18);
+      }
     }
 
     ctx.restore();
@@ -125,24 +129,21 @@
     const ch = ctx.canvas.height;
     const ent = editingEntity;
 
-    // Draw the room with the entity highlighted
     const offset = {
       x: Math.floor((cw - (window.MapManager.rooms[ent.room]?.pixelWidth || 600)) / 2),
       y: Math.floor((ch - (window.MapManager.rooms[ent.room]?.pixelHeight || 600)) / 2)
     };
 
-    // Highlight entity
     ctx.save();
     ctx.translate(offset.x, offset.y);
 
     if (ent.area) {
       ctx.strokeStyle = '#0f0';
       ctx.lineWidth = 2;
-      ctx.strokeRect(ent.area.x - 2, ent.area.y - 2, (ent.area.width || 18) + 4, (ent.area.height || 18) + 4);
+      ctx.strokeRect(ent.area.x - 2, ent.area.y - 2, (ent.area.width || TILE_SIZE) + 4, (ent.area.height || TILE_SIZE) + 4);
 
-      // Position crosshair
-      const cx = ent.area.x + (ent.area.width || 18) / 2;
-      const cy = ent.area.y + (ent.area.height || 18) / 2;
+      const cx = ent.area.x + (ent.area.width || TILE_SIZE) / 2;
+      const cy = ent.area.y + (ent.area.height || TILE_SIZE) / 2;
       ctx.strokeStyle = 'rgba(0,255,0,0.5)';
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -169,9 +170,8 @@
 
     ctx.restore();
 
-    // Info table (top-right)
     const tableW = 280;
-    const tableH = 180;
+    const tableH = 200;
     const tx = cw - tableW - 20;
     const ty = 20;
 
@@ -193,7 +193,9 @@
     ctx.fillStyle = '#fff';
 
     if (ent.area) {
-      ctx.fillText(`Pos: x=${ent.area.x}, y=${ent.area.y}`, tx + 8, infoY);
+      const tX = Math.floor(ent.area.x / TILE_SIZE);
+      const tY = Math.floor(ent.area.y / TILE_SIZE);
+      ctx.fillText(`Pos: x=${ent.area.x}, y=${ent.area.y} (tile ${tX},${tY})`, tx + 8, infoY);
       infoY += 16;
       ctx.fillText(`Size: w=${ent.area.width}, h=${ent.area.height}`, tx + 8, infoY);
       infoY += 20;
@@ -214,11 +216,10 @@
       ctx.fillText(`  size: w=${ent.hitbox.width}, h=${ent.hitbox.height}`, tx + 8, infoY);
     }
 
-    // Controls hint at bottom
     ctx.font = '11px monospace';
     ctx.fillStyle = 'rgba(255,255,255,0.4)';
     ctx.textAlign = 'center';
-    ctx.fillText('Arrows=move | Tab=switch mode | Enter=save | Esc=back', cw / 2, ch - 30);
+    ctx.fillText('Arrows=move (snap tile) | Tab=switch mode | Enter=save | Esc=back', cw / 2, ch - 30);
     if (editMode === 'interaction' || editMode === 'hitbox') {
       ctx.fillText('Hold X + (±) = resize width | Hold Y + (±) = resize height', cw / 2, ch - 48);
     }
@@ -226,9 +227,8 @@
 
   // --- Input Handling ---
   document.addEventListener('keydown', function (e) {
-    // Toggle debug menu with 0 key (in-game only)
     if (e.key === '0' && !window.gameMenu.state.isActive) {
-      if (entityEditorActive) return; // Don't close while editing
+      if (entityEditorActive) return;
       if (debugOpen) {
         debugOpen = false;
         debugSubMenu = null;
@@ -243,19 +243,16 @@
 
     if (!debugOpen) return;
 
-    // Entity editor mode
     if (entityEditorActive && editingEntity) {
       handleEntityEditorInput(e);
       return;
     }
 
-    // Sub-menu navigation
     if (debugSubMenu) {
       handleSubMenuInput(e);
       return;
     }
 
-    // Main menu navigation
     if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
       debugSelectedIndex = (debugSelectedIndex - 1 + MENU_OPTIONS.length) % MENU_OPTIONS.length;
     } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
@@ -296,7 +293,6 @@
     }
   }
 
-  // Track held keys for entity editor
   const heldKeys = {};
   document.addEventListener('keydown', e => { heldKeys[e.key.toLowerCase()] = true; });
   document.addEventListener('keyup', e => { heldKeys[e.key.toLowerCase()] = false; });
@@ -314,7 +310,6 @@
     }
 
     if (e.key === 'Enter') {
-      // Save for this session (already in-place, just confirm)
       entityEditorActive = false;
       editingEntity = null;
       editMode = 'position';
@@ -324,7 +319,6 @@
 
     if (e.key === 'Tab') {
       e.preventDefault();
-      // Cycle: position -> interaction (if exists) -> hitbox (if exists) -> position
       if (editMode === 'position') {
         if (ent.interactionArea) editMode = 'interaction';
         else if (ent.hitbox) editMode = 'hitbox';
@@ -337,56 +331,53 @@
       return;
     }
 
-    // Resize in interaction/hitbox mode
+    // Snap to tile in position mode
+    const step = editMode === 'position' ? TILE_SIZE : 1;
+
     if (editMode === 'interaction' && ent.interactionArea) {
       if (heldKeys['x']) {
-        if (e.key === '+' || e.key === '=') { ent.interactionArea.width += 1; return; }
-        if (e.key === '-') { ent.interactionArea.width = Math.max(1, ent.interactionArea.width - 1); return; }
+        if (e.key === '+' || e.key === '=') { ent.interactionArea.width += TILE_SIZE; return; }
+        if (e.key === '-') { ent.interactionArea.width = Math.max(TILE_SIZE, ent.interactionArea.width - TILE_SIZE); return; }
       }
       if (heldKeys['y']) {
-        if (e.key === '+' || e.key === '=') { ent.interactionArea.height += 1; return; }
-        if (e.key === '-') { ent.interactionArea.height = Math.max(1, ent.interactionArea.height - 1); return; }
+        if (e.key === '+' || e.key === '=') { ent.interactionArea.height += TILE_SIZE; return; }
+        if (e.key === '-') { ent.interactionArea.height = Math.max(TILE_SIZE, ent.interactionArea.height - TILE_SIZE); return; }
       }
-      // Move interaction area with arrows
-      if (e.key === 'ArrowUp') { ent.interactionArea.y -= 1; return; }
-      if (e.key === 'ArrowDown') { ent.interactionArea.y += 1; return; }
-      if (e.key === 'ArrowLeft') { ent.interactionArea.x -= 1; return; }
-      if (e.key === 'ArrowRight') { ent.interactionArea.x += 1; return; }
+      if (e.key === 'ArrowUp') { ent.interactionArea.y -= TILE_SIZE; return; }
+      if (e.key === 'ArrowDown') { ent.interactionArea.y += TILE_SIZE; return; }
+      if (e.key === 'ArrowLeft') { ent.interactionArea.x -= TILE_SIZE; return; }
+      if (e.key === 'ArrowRight') { ent.interactionArea.x += TILE_SIZE; return; }
     }
 
     if (editMode === 'hitbox' && ent.hitbox) {
       if (heldKeys['x']) {
-        if (e.key === '+' || e.key === '=') { ent.hitbox.width += 1; return; }
-        if (e.key === '-') { ent.hitbox.width = Math.max(1, ent.hitbox.width - 1); return; }
+        if (e.key === '+' || e.key === '=') { ent.hitbox.width += TILE_SIZE; return; }
+        if (e.key === '-') { ent.hitbox.width = Math.max(TILE_SIZE, ent.hitbox.width - TILE_SIZE); return; }
       }
       if (heldKeys['y']) {
-        if (e.key === '+' || e.key === '=') { ent.hitbox.height += 1; return; }
-        if (e.key === '-') { ent.hitbox.height = Math.max(1, ent.hitbox.height - 1); return; }
+        if (e.key === '+' || e.key === '=') { ent.hitbox.height += TILE_SIZE; return; }
+        if (e.key === '-') { ent.hitbox.height = Math.max(TILE_SIZE, ent.hitbox.height - TILE_SIZE); return; }
       }
-      // Move hitbox with arrows
-      if (e.key === 'ArrowUp') { ent.hitbox.y -= 1; return; }
-      if (e.key === 'ArrowDown') { ent.hitbox.y += 1; return; }
-      if (e.key === 'ArrowLeft') { ent.hitbox.x -= 1; return; }
-      if (e.key === 'ArrowRight') { ent.hitbox.x += 1; return; }
+      if (e.key === 'ArrowUp') { ent.hitbox.y -= TILE_SIZE; return; }
+      if (e.key === 'ArrowDown') { ent.hitbox.y += TILE_SIZE; return; }
+      if (e.key === 'ArrowLeft') { ent.hitbox.x -= TILE_SIZE; return; }
+      if (e.key === 'ArrowRight') { ent.hitbox.x += TILE_SIZE; return; }
     }
 
-    // Position mode — move entity area
     if (editMode === 'position' && ent.area) {
-      if (e.key === 'ArrowUp') { ent.area.y -= 1; return; }
-      if (e.key === 'ArrowDown') { ent.area.y += 1; return; }
-      if (e.key === 'ArrowLeft') { ent.area.x -= 1; return; }
-      if (e.key === 'ArrowRight') { ent.area.x += 1; return; }
+      if (e.key === 'ArrowUp') { ent.area.y -= TILE_SIZE; return; }
+      if (e.key === 'ArrowDown') { ent.area.y += TILE_SIZE; return; }
+      if (e.key === 'ArrowLeft') { ent.area.x -= TILE_SIZE; return; }
+      if (e.key === 'ArrowRight') { ent.area.x += TILE_SIZE; return; }
     }
-    // For obstacles without area, move hitbox directly
     if (editMode === 'position' && !ent.area && ent.hitbox) {
-      if (e.key === 'ArrowUp') { ent.hitbox.y -= 1; return; }
-      if (e.key === 'ArrowDown') { ent.hitbox.y += 1; return; }
-      if (e.key === 'ArrowLeft') { ent.hitbox.x -= 1; return; }
-      if (e.key === 'ArrowRight') { ent.hitbox.x += 1; return; }
+      if (e.key === 'ArrowUp') { ent.hitbox.y -= TILE_SIZE; return; }
+      if (e.key === 'ArrowDown') { ent.hitbox.y += TILE_SIZE; return; }
+      if (e.key === 'ArrowLeft') { ent.hitbox.x -= TILE_SIZE; return; }
+      if (e.key === 'ArrowRight') { ent.hitbox.x += TILE_SIZE; return; }
     }
   }
 
-  // --- Option Execution ---
   function executeOption(index) {
     switch (MENU_OPTIONS[index]) {
       case 'Reload Game':
@@ -447,17 +438,17 @@
 
   function jumpToRoom(roomId) {
     if (!window.MapManager) return;
-    // Find first door that leads INTO this room, use its spawn coords
     const door = window.Entities.find(e => e.type === 'door' && e.targetRoom === roomId);
     if (door) {
       window.MapManager.transition(roomId, door.spawnX, door.spawnY);
     } else {
-      // No door found, just go to the room center
       const room = window.MapManager.rooms[roomId];
       if (room) {
         window.MapManager.currentRoom = roomId;
-        window.player.x = (room.pixelWidth || 600) / 2 - 25;
-        window.player.y = (room.pixelHeight || 600) / 2 - 25;
+        const tilesW = Math.floor((room.pixelWidth || 600) / TILE_SIZE);
+        const tilesH = Math.floor((room.pixelHeight || 600) / TILE_SIZE);
+        window.player.x = Math.floor(tilesW / 2) * TILE_SIZE;
+        window.player.y = Math.floor(tilesH / 2) * TILE_SIZE;
       }
     }
   }
@@ -466,13 +457,11 @@
     editingEntity = ent;
     editMode = 'position';
     entityEditorActive = true;
-    // Switch to entity's room so we can see it
     if (window.MapManager && ent.room) {
       window.MapManager.currentRoom = ent.room;
     }
   }
 
-  // Export
   window.DebugMenu = {
     get isOpen() { return debugOpen; },
     draw: drawDebugMenu

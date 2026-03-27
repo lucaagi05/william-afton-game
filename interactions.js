@@ -5,6 +5,41 @@ let activeInteraction = null;
 let choiceIndex = 0;
 let textboxPage = 0;
 
+// --- Rich Text Markup ---
+// Supports {ItemName:#color} syntax for colored item names in dialogues
+function parseMarkup(text) {
+  const parts = [];
+  let i = 0;
+  while (i < text.length) {
+    const braceIdx = text.indexOf('{', i);
+    if (braceIdx === -1) {
+      parts.push({ text: text.slice(i), color: null });
+      break;
+    }
+    if (braceIdx > i) {
+      parts.push({ text: text.slice(i, braceIdx), color: null });
+    }
+    const closeBrace = text.indexOf('}', braceIdx);
+    if (closeBrace === -1) {
+      parts.push({ text: text.slice(braceIdx), color: null });
+      break;
+    }
+    const content = text.slice(braceIdx + 1, closeBrace);
+    const colonIdx = content.lastIndexOf(':');
+    if (colonIdx > 0) {
+      parts.push({ text: content.slice(0, colonIdx), color: content.slice(colonIdx + 1) });
+    } else {
+      parts.push({ text: '{' + content + '}', color: null });
+    }
+    i = closeBrace + 1;
+  }
+  return parts;
+}
+
+function getPlainText(markupText) {
+  return parseMarkup(markupText).map(p => p.text).join('');
+}
+
 // --- Text Wrapping Utility ---
 function wrapText(ctx, text, x, y, maxWidth, lineHeight, maxLines) {
   const words = text.split(' ');
@@ -24,10 +59,52 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight, maxLines) {
   return lines;
 }
 
+// Draw a single line with color markup applied
+function drawRichLine(ctx, lineText, fullMarkupText, x, y, defaultColor) {
+  const parts = parseMarkup(fullMarkupText);
+  const plainFull = parts.map(p => p.text).join('');
+
+  // Find where this line starts in the full plain text
+  // Build a character-color map for the full text
+  const colorMap = [];
+  for (const part of parts) {
+    for (let i = 0; i < part.text.length; i++) {
+      colorMap.push(part.color || defaultColor);
+    }
+  }
+
+  // Find lineText in plainFull
+  const lineIdx = plainFull.indexOf(lineText);
+  if (lineIdx === -1) {
+    ctx.fillStyle = defaultColor;
+    ctx.fillText(lineText, x, y);
+    return;
+  }
+
+  // Draw character by character with correct colors
+  let curX = x;
+  let runStart = 0;
+  let runColor = colorMap[lineIdx] || defaultColor;
+
+  for (let i = 0; i <= lineText.length; i++) {
+    const charColor = (i < lineText.length) ? (colorMap[lineIdx + i] || defaultColor) : null;
+    if (charColor !== runColor || i === lineText.length) {
+      // Draw the accumulated run
+      const runText = lineText.slice(runStart, i);
+      ctx.fillStyle = runColor;
+      ctx.fillText(runText, curX, y);
+      curX += ctx.measureText(runText).width;
+      runStart = i;
+      runColor = charColor;
+    }
+  }
+}
+
 // --- Interaction Key Handler ---
 document.addEventListener('keydown', function (e) {
   if (window.gameMenu && window.gameMenu.state.isActive) return;
   if (window.gameMenu && window.gameMenu.showExitConfirm) return;
+  if (window.gameMenu && window.gameMenu.showPauseMenu) return;
   if (window.DebugMenu && window.DebugMenu.isOpen) return;
   if (window.Inventory && window.Inventory.isOpen) return;
 
@@ -91,7 +168,6 @@ document.addEventListener('keydown', function (e) {
 });
 
 // --- Textbox / Choice Rendering ---
-// Uses fixed preset size, drawn in canvas-global coordinates
 function drawInteraction(ctx) {
   const cw = ctx.canvas.width;
   const ch = ctx.canvas.height;
@@ -116,10 +192,11 @@ function drawInteraction(ctx) {
     ctx.textAlign = 'left';
     const pages = typeof t.pages === 'function' ? t.pages() : t.pages;
     const pageText = pages[textboxPage] || '';
+    const plainText = getPlainText(pageText);
     const lineHeight = 24;
-    const lines = wrapText(ctx, pageText, 0, 0, boxWidth - margin * 2, lineHeight, 10);
+    const lines = wrapText(ctx, plainText, 0, 0, boxWidth - margin * 2, lineHeight, 10);
     for (let i = 0; i < lines.length; i++) {
-      ctx.fillText(lines[i], boxX + margin, boxY + margin + i * lineHeight);
+      drawRichLine(ctx, lines[i], pageText, boxX + margin, boxY + margin + i * lineHeight, t.color);
     }
     if (textboxPage < pages.length - 1) {
       ctx.fillStyle = t.frame.outline;
@@ -241,14 +318,14 @@ window.interactions = [
       if (window.Inventory) window.Inventory.add('key');
     },
     text: {
-      pages: ["You found a key. It looks important."],
+      pages: ["You found a {Key:#ff0}. It looks important."],
       font: '20px monospace',
-      color: '#ff0',
+      color: '#fff',
       frame: { fill: '#222', outline: '#ff0', height: 90, margin: 16 }
     }
   },
 
-  // --- CANDY ITEM pickup ---
+  // --- CANDY ITEM pickup (Hallway) ---
   {
     id: 'candy_item',
     room: 'room3',
@@ -267,47 +344,104 @@ window.interactions = [
       if (window.Inventory) window.Inventory.add('candy');
     },
     text: {
-      pages: ["You picked up a candy."],
+      pages: ["You picked up a {Candy:#4af}."],
       font: '20px monospace',
-      color: '#f0f',
-      frame: { fill: '#222', outline: '#f0f', height: 90, margin: 16 }
+      color: '#fff',
+      frame: { fill: '#222', outline: '#4af', height: 90, margin: 16 }
     }
   },
 
-  // --- LOCKED DOOR (Room 4 → Garden) ---
+  // --- CANDY ITEM pickup (Garden) ---
   {
-    id: 'locked_door_room4',
+    id: 'candy_item_garden',
+    room: 'garden',
+    type: 'text',
+    get area() {
+      const e = window.Entities.find(en => en.id === 'candy_item_garden');
+      return e && !e.collected ? e.interactionArea : { x: -999, y: -999, width: 0, height: 0 };
+    },
+    trigger() {
+      const e = window.Entities.find(en => en.id === 'candy_item_garden');
+      return e && !e.collected;
+    },
+    onActivate() {
+      const e = window.Entities.find(en => en.id === 'candy_item_garden');
+      if (e) e.collected = true;
+      if (window.Inventory) window.Inventory.add('candy');
+    },
+    text: {
+      pages: ["You picked up a {Candy:#4af}."],
+      font: '20px monospace',
+      color: '#fff',
+      frame: { fill: '#222', outline: '#4af', height: 90, margin: 16 }
+    }
+  },
+
+  // --- RED CIRCLE entity (Garden) — damages on interaction ---
+  {
+    id: 'red_circle',
+    room: 'garden',
+    type: 'text',
+    get area() {
+      const e = window.Entities.find(en => en.id === 'red_circle');
+      return e ? e.interactionArea : { x: -999, y: -999, width: 0, height: 0 };
+    },
+    trigger() { return true; },
+    onActivate() {
+      if (window.Health) window.Health.takeDamage(1);
+    },
+    text: {
+      pages: ["Something sharp pricks you. You lost 1 HP."],
+      font: '20px monospace',
+      color: '#f44',
+      frame: { fill: '#222', outline: '#f44', height: 90, margin: 16 }
+    }
+  },
+
+  // --- LOCKED DOOR — "Door is locked" (no key) ---
+  {
+    id: 'locked_door_nokey',
     room: 'room4',
     type: 'text',
     get area() {
       const door = window.Entities.find(e => e.id === 'door_to_garden');
-      return door ? door.interactionArea : { x: -999, y: -999, width: 0, height: 0 };
+      return door && door.lockArea ? door.lockArea : { x: -999, y: -999, width: 0, height: 0 };
     },
     trigger() {
       const door = window.Entities.find(e => e.id === 'door_to_garden');
-      return door && door.locked;
+      return door && door.locked && !(window.Inventory && window.Inventory.has('key'));
+    },
+    text: {
+      pages: ["The door is locked. You need a key."],
+      font: '20px monospace',
+      color: '#f44',
+      frame: { fill: '#222', outline: '#f44', height: 90, margin: 16 }
+    }
+  },
+
+  // --- LOCKED DOOR — "Unlock with key" (has key) ---
+  {
+    id: 'locked_door_unlock',
+    room: 'room4',
+    type: 'text',
+    get area() {
+      const door = window.Entities.find(e => e.id === 'door_to_garden');
+      return door && door.lockArea ? door.lockArea : { x: -999, y: -999, width: 0, height: 0 };
+    },
+    trigger() {
+      const door = window.Entities.find(e => e.id === 'door_to_garden');
+      return door && door.locked && window.Inventory && window.Inventory.has('key');
     },
     onActivate() {
-      if (window.Inventory && window.Inventory.has('key')) {
-        const door = window.Entities.find(e => e.id === 'door_to_garden');
-        if (door) door.locked = false;
-        window.Inventory.remove('key');
-      }
-    },
-    get text() {
       const door = window.Entities.find(e => e.id === 'door_to_garden');
-      if (door && !door.locked) {
-        return {
-          pages: ["You used the key. The door is now open."],
-          font: '20px monospace', color: '#0f0',
-          frame: { fill: '#222', outline: '#0f0', height: 90, margin: 16 }
-        };
-      }
-      return {
-        pages: ["The door is locked. You need a key."],
-        font: '20px monospace', color: '#f44',
-        frame: { fill: '#222', outline: '#f44', height: 90, margin: 16 }
-      };
+      if (door) door.locked = false;
+      if (window.Inventory) window.Inventory.remove('key');
+    },
+    text: {
+      pages: ["You used the {Key:#ff0}. The door is now open."],
+      font: '20px monospace',
+      color: '#0f0',
+      frame: { fill: '#222', outline: '#0f0', height: 90, margin: 16 }
     }
   }
 ];

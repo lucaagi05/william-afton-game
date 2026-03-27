@@ -38,7 +38,6 @@ function drawPlayer(ctx, player) {
 }
 
 
-
 function isColliding(a, b) {
   return a.x < b.x + b.width &&
     a.x + a.width > b.x &&
@@ -46,7 +45,6 @@ function isColliding(a, b) {
     a.y + a.height > b.y;
 }
 
-// Export local constants for use in other modules
 // Export local constants for use in other modules
 window.SPRITE_MAP = SPRITE_MAP;
 window.spriteSheet = spriteSheet;

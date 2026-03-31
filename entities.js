@@ -24,6 +24,8 @@ window.Entities = [
     type: 'item',
     room: 'room1',
     interactionId: 'cube_item',
+    // --> HOW TO MOVE ITEMS: Change the multiplier before TILE_SIZE in `area` (e.g., x: 10 * TILE_SIZE)
+    // Make sure to also update `interactionArea` so you can still grab it!
     area: { x: 5 * TILE_SIZE, y: 1 * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE },
     color: '#0ff',
     interactionArea: { x: 5 * TILE_SIZE, y: 1 * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE * 2 },
@@ -187,16 +189,22 @@ window.Entities = [
     }
   },
 
-  // Red circle entity — damages player on interaction
+  // Red circle entity — damages player on interaction, attackable enemy
   {
     id: 'red_circle',
     type: 'entity',
     room: 'garden',
     interactionId: 'red_circle',
+    attackable: true,
+    hp: 10,
+    maxHp: 10,
+    dead: false,
+    showHealthBar: false,
     area: { x: 12 * TILE_SIZE, y: 8 * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE },
     color: '#f44',
     interactionArea: { x: 11 * TILE_SIZE, y: 7 * TILE_SIZE, width: TILE_SIZE * 3, height: TILE_SIZE * 3 },
     draw(ctx) {
+      if (this.dead) return;
       ctx.save();
       ctx.fillStyle = this.color;
       ctx.beginPath();
@@ -206,6 +214,46 @@ window.Entities = [
         TILE_SIZE * 0.35, 0, Math.PI * 2
       );
       ctx.fill();
+
+      // Health bar (shown after first hit)
+      if (this.showHealthBar && this.hp > 0) {
+        const barW = TILE_SIZE * 0.8;
+        const barH = 5;
+        const barX = this.area.x + (TILE_SIZE - barW) / 2;
+        const barY = this.area.y - 10;
+        const pct = this.hp / this.maxHp;
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+        ctx.fillStyle = '#f44';
+        ctx.fillRect(barX, barY, barW * pct, barH);
+      }
+
+      ctx.restore();
+    }
+  },
+
+  // KNIFE ITEM (Weapon category = red)
+  {
+    id: 'knife_item',
+    type: 'item',
+    room: 'room1',
+    collected: false,
+    interactionId: 'knife_item',
+    area: { x: 8 * TILE_SIZE, y: 5 * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE },
+    color: '#f44',
+    interactionArea: { x: 7 * TILE_SIZE, y: 4 * TILE_SIZE, width: TILE_SIZE * 3, height: TILE_SIZE * 3 },
+    draw(ctx) {
+      if (this.collected) return;
+      ctx.save();
+      ctx.shadowColor = '#f44'; ctx.shadowBlur = 10;
+      ctx.fillStyle = this.color;
+      const s = TILE_SIZE * 0.45;
+      const ox = this.area.x + (TILE_SIZE - s) / 2;
+      const oy = this.area.y + (TILE_SIZE - s) / 2;
+      ctx.fillRect(ox, oy, s, s);
+      ctx.font = '12px monospace'; ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('K', this.area.x + TILE_SIZE / 2, this.area.y + TILE_SIZE / 2);
       ctx.restore();
     }
   },
@@ -213,21 +261,27 @@ window.Entities = [
   // ==========================================
   // DOORS
   // ==========================================
+  // --> HOW TO MOVE DOORS:
+  // When making a room larger/smaller in map.js, doors DO NOT auto-align to the border!
+  // You must update:
+  // 1. The structural x/y property (e.g., `x: 10 * TILE_SIZE`)
+  // 2. The `interactionArea`, ensuring it spatially overlaps where the doorway visual sits.
+  // 3. For the opposite door in the next room, update `spawnX` and `spawnY` so you emerge properly.
 
   // Room 1 ↔ Room 2 (bottom/top, tiles 5-6)
   {
     id: 'door_to_room2',
     type: 'door', room: 'room1', edge: 'bottom',
-    x: 5 * TILE_SIZE, width: 2 * TILE_SIZE,
+    x: 15 * TILE_SIZE, width: 2 * TILE_SIZE,
     targetRoom: 'room2', spawnX: 5 * TILE_SIZE, spawnY: 0,
-    interactionArea: { x: 5 * TILE_SIZE, y: 600, width: 2 * TILE_SIZE, height: TILE_SIZE },
+    interactionArea: { x: 15 * TILE_SIZE, y: 1500, width: 2 * TILE_SIZE, height: TILE_SIZE },
     draw() { }
   },
   {
     id: 'door_to_room1',
     type: 'door', room: 'room2', edge: 'top',
     x: 5 * TILE_SIZE, width: 2 * TILE_SIZE,
-    targetRoom: 'room1', spawnX: 5 * TILE_SIZE, spawnY: 11 * TILE_SIZE,
+    targetRoom: 'room1', spawnX: 15 * TILE_SIZE, spawnY: 29 * TILE_SIZE,
     interactionArea: { x: 5 * TILE_SIZE, y: -TILE_SIZE, width: 2 * TILE_SIZE, height: TILE_SIZE },
     draw() { }
   },

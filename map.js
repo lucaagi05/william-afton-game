@@ -6,8 +6,8 @@ window.MapManager = {
   rooms: {
     room1: {
       name: 'Room 1',
-      pixelWidth: 600,
-      pixelHeight: 600,
+      pixelWidth: 1500,
+      pixelHeight: 1500,
       musicTrack: 'ingame',
       get entities() { return window.Entities ? window.Entities.filter(e => e.room === 'room1' && !e.collected) : []; },
       get obstacles() { return this.entities.filter(e => e.type === 'obstacle').map(e => e.hitbox); },
@@ -58,10 +58,15 @@ window.MapManager = {
   current() { return this.rooms[this.currentRoom]; },
 
   transition(targetRoom, spawnX, spawnY) {
+    if (window.AudioManager && this.currentRoom !== targetRoom) {
+      window.AudioManager.playDoorSound();
+    }
     this.currentRoom = targetRoom;
     if (window.player) {
       window.player.x = spawnX;
       window.player.y = spawnY;
+      window.player.visualX = spawnX;
+      window.player.visualY = spawnY;
     }
   },
 

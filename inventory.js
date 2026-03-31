@@ -1,4 +1,4 @@
-// inventory.js - Inventory system with 4 category tabs, quantities, USE/DROP/EXIT
+// inventory.js - Inventory system with 4 category tabs, quantities, USE/DROP/EXIT, EQUIP for weapons
 
 const ITEM_CATEGORIES = {
   consumable:  { name: 'Consumable',  color: '#4af', order: 0 },
@@ -26,6 +26,12 @@ const INVENTORY_ITEMS = {
       window.Health.heal(5);
       return true;
     }
+  },
+  knife: {
+    id: 'knife', name: 'Knife', category: 'weapon',
+    description: "A small kitchen knife. 1 tile range. Press Shift to attack.",
+    stackable: false,
+    damage: 1
   }
 };
 window.INVENTORY_ITEMS = INVENTORY_ITEMS;
@@ -41,7 +47,11 @@ const ITEMS_PER_PAGE = 6;
 // Consumable action menu state
 let showingActions = false;
 let actionIndex = 0; // 0=USE, 1=DROP, 2=EXIT
-const ACTIONS = ['USE', 'DROP', 'EXIT'];
+const ACTIONS_CONSUMABLE = ['USE', 'DROP', 'EXIT'];
+const ACTIONS_WEAPON = ['EQUIP', 'EXIT'];
+
+// Equipped weapon
+let equippedWeapon = null;
 
 // --- Drop counter for unique IDs ---
 let dropCounter = 0;
@@ -63,6 +73,16 @@ function getPageItems() {
   const items = getItemsForTab();
   const start = currentPage * ITEMS_PER_PAGE;
   return items.slice(start, start + ITEMS_PER_PAGE);
+}
+
+function getCurrentActions() {
+  const entry = getItemsForTab()[currentPage * ITEMS_PER_PAGE + inventorySelectedIndex];
+  if (!entry) return ACTIONS_CONSUMABLE;
+  const item = INVENTORY_ITEMS[entry.id];
+  if (!item) return ACTIONS_CONSUMABLE;
+  if (item.category === 'weapon') return ACTIONS_WEAPON;
+  if (item.category === 'consumable') return ACTIONS_CONSUMABLE;
+  return [];
 }
 
 function drawInventory(ctx) {
@@ -126,7 +146,9 @@ function drawInventory(ctx) {
       ctx.fillStyle = catColor;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
-      ctx.fillText(item.name, boxX + 20, contentY + 10);
+      let nameDisplay = item.name;
+      if (equippedWeapon === item.id) nameDisplay += ' [E]';
+      ctx.fillText(nameDisplay, boxX + 20, contentY + 10);
 
       ctx.font = '14px monospace';
       ctx.fillStyle = 'rgba(255,255,255,0.7)';
@@ -135,15 +157,16 @@ function drawInventory(ctx) {
         ctx.fillText(descLines[i], boxX + 20, contentY + 45 + i * 20);
       }
 
-      if (showingActions && item.category === 'consumable') {
+      const actions = getCurrentActions();
+      if (showingActions && actions.length > 0) {
         // Draw action options
         const actY = contentY + 45 + descLines.length * 20 + 20;
         ctx.font = '18px monospace';
-        for (let i = 0; i < ACTIONS.length; i++) {
+        for (let i = 0; i < actions.length; i++) {
           ctx.fillStyle = i === actionIndex ? '#0ff' : 'rgba(255,255,255,0.5)';
-          ctx.fillText(ACTIONS[i], boxX + 20 + i * 100, actY);
+          ctx.fillText(actions[i], boxX + 20 + i * 100, actY);
         }
-      } else if (item.category === 'consumable') {
+      } else if (item.category === 'consumable' || item.category === 'weapon') {
         showingActions = true;
         actionIndex = 0;
       } else {
@@ -198,6 +221,7 @@ function drawInventory(ctx) {
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       let nameStr = item.name;
+      if (equippedWeapon === item.id) nameStr += ' [E]';
       if (item.stackable && entry.quantity > 1) {
         nameStr += '  \u00d7' + entry.quantity;
       }
@@ -308,6 +332,7 @@ function dropItem(itemId) {
       const e = window.Entities.find(en => en.id === dropId);
       if (e) e.collected = true;
       if (window.Inventory) window.Inventory.add(itemId);
+      if (window.AudioManager) window.AudioManager.playItemPickupSound();
     },
     text: {
       pages: ["You picked up a {" + itemDef.name + ":" + catColor + "}."],
@@ -344,6 +369,7 @@ document.addEventListener('keydown', function (e) {
   // Tab key: switch category tab
   if (e.key === 'Tab') {
     e.preventDefault();
+    if (window.AudioManager) window.AudioManager.playMenuSelectSound();
     activeTab = (activeTab + 1) % 4;
     inventorySelectedIndex = 0;
     currentPage = 0;
@@ -352,30 +378,36 @@ document.addEventListener('keydown', function (e) {
     return;
   }
 
-  // Shift: page forward
-  if (e.key === 'Shift') {
+  // Shift: page forward (only when NOT showing actions to avoid conflict with weapon attack)
+  if (e.key === 'Shift' && !showingActions) {
     const totalPages = getTotalPages();
     if (totalPages > 1) {
+      if (window.AudioManager) window.AudioManager.playMenuNavSound();
       currentPage = (currentPage + 1) % totalPages;
       inventorySelectedIndex = 0;
     }
     return;
   }
 
-  // In action menu (USE/DROP/EXIT for consumables)
+  // In action menu
   if (showingActions) {
+    const actions = getCurrentActions();
     if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
       actionIndex = Math.max(0, actionIndex - 1);
+      if (window.AudioManager) window.AudioManager.playMenuNavSound();
     } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
-      actionIndex = Math.min(ACTIONS.length - 1, actionIndex + 1);
+      actionIndex = Math.min(actions.length - 1, actionIndex + 1);
+      if (window.AudioManager) window.AudioManager.playMenuNavSound();
     } else if (e.key === 'Enter') {
+      if (window.AudioManager) window.AudioManager.playMenuSelectSound();
       const items = getItemsForTab();
       const idx = currentPage * ITEMS_PER_PAGE + inventorySelectedIndex;
       const entry = items[idx];
       if (!entry) return;
       const itemDef = INVENTORY_ITEMS[entry.id];
+      const selectedAction = actions[actionIndex];
 
-      if (ACTIONS[actionIndex] === 'USE') {
+      if (selectedAction === 'USE') {
         if (itemDef && itemDef.onUse && itemDef.onUse()) {
           // Consume one
           entry.quantity--;
@@ -390,7 +422,7 @@ document.addEventListener('keydown', function (e) {
           inventoryShowingDesc = false;
         }
         // If onUse returned false (full HP), do nothing
-      } else if (ACTIONS[actionIndex] === 'DROP') {
+      } else if (selectedAction === 'DROP') {
         dropItem(entry.id);
         entry.quantity--;
         if (entry.quantity <= 0) {
@@ -400,9 +432,20 @@ document.addEventListener('keydown', function (e) {
             inventorySelectedIndex = Math.max(0, getPageItems().length - 1);
           }
         }
+        // Unequip if dropping equipped weapon
+        if (equippedWeapon === entry.id) equippedWeapon = null;
         showingActions = false;
         inventoryShowingDesc = false;
-      } else if (ACTIONS[actionIndex] === 'EXIT') {
+      } else if (selectedAction === 'EQUIP') {
+        // Toggle equip
+        if (equippedWeapon === entry.id) {
+          equippedWeapon = null; // Unequip
+        } else {
+          equippedWeapon = entry.id;
+        }
+        showingActions = false;
+        inventoryShowingDesc = false;
+      } else if (selectedAction === 'EXIT') {
         showingActions = false;
         inventoryShowingDesc = false;
       }
@@ -410,7 +453,7 @@ document.addEventListener('keydown', function (e) {
     return;
   }
 
-  // Description view (non-consumable)
+  // Description view (non-consumable, non-weapon)
   if (inventoryShowingDesc) {
     if (e.key === 'Enter') {
       inventoryShowingDesc = false;
@@ -423,19 +466,25 @@ document.addEventListener('keydown', function (e) {
   const pageItems = getPageItems();
   if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
     inventorySelectedIndex = Math.max(0, inventorySelectedIndex - 1);
+    if (window.AudioManager) window.AudioManager.playMenuNavSound();
   } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
     inventorySelectedIndex = Math.min(pageItems.length - 1, inventorySelectedIndex + 1);
+    if (window.AudioManager) window.AudioManager.playMenuNavSound();
   } else if (e.key === 'Enter' && pageItems.length > 0) {
+    if (window.AudioManager) window.AudioManager.playMenuEnterSound();
     inventoryShowingDesc = true;
     showingActions = false;
     actionIndex = 0;
-    // showingActions will be set to true in draw for consumables
+    // showingActions will be set to true in draw for consumables/weapons
   }
 });
 
 window.Inventory = {
   get items() { return inventoryItems; },
   get isOpen() { return inventoryOpen; },
+  get equippedWeapon() { return equippedWeapon; },
+  set equippedWeapon(v) { equippedWeapon = v; },
+  close() { inventoryOpen = false; showingActions = false; inventoryShowingDesc = false; },
   add(itemId) {
     const def = INVENTORY_ITEMS[itemId];
     if (!def) return;
@@ -466,6 +515,7 @@ window.Inventory = {
     inventoryOpen = false;
     activeTab = 0;
     currentPage = 0;
+    equippedWeapon = null;
   },
   setItems(items) {
     inventoryItems.length = 0;

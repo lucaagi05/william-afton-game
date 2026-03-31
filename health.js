@@ -1,4 +1,4 @@
-// health.js - Player health system: HP bar, damage, healing, fade display
+// health.js - Player health system: HP bar, damage, healing, fade display, immunity frames
 
 (function () {
   let maxHP = 10;
@@ -7,12 +7,84 @@
   const DISPLAY_DURATION = 5000; // 5 seconds after damage
   const FADE_START = 4000; // start fading at 4s
 
+  // Immunity frames
+  let immuneUntil = 0;
+  const IMMUNITY_DURATION = 2000; // 2 seconds
+
   function takeDamage(amount) {
+    const now = Date.now();
+
+    // Check immunity
+    if (now < immuneUntil) return;
+    if (currentHP <= 0) return;
+
+    // Play damage sound
+    if (window.AudioManager) {
+      window.AudioManager.playDamageSound();
+    }
+
     currentHP = Math.max(0, currentHP - amount);
-    lastDamageTime = Date.now();
+    lastDamageTime = now;
+
+    // Start immunity frames
+    immuneUntil = now + IMMUNITY_DURATION;
+
+    // Screen shake
+    if (window.triggerScreenShake) {
+      window.triggerScreenShake(6, 300);
+    }
+
+    // Recoil: push player 1 tile backward
+    if (window.player && window.playerDir && currentHP > 0) {
+      const TILE = window.TILE_SIZE || 50;
+      const dir = window.playerDir;
+      let newX = window.player.x;
+      let newY = window.player.y;
+
+      // Move OPPOSITE to facing direction
+      if (dir === 'up') newY += TILE;
+      else if (dir === 'down') newY -= TILE;
+      else if (dir === 'left') newX += TILE;
+      else if (dir === 'right') newX -= TILE;
+
+      // Clamp to room bounds
+      if (window.MapManager) {
+        const room = window.MapManager.current();
+        const rw = room.pixelWidth || 600;
+        const rh = room.pixelHeight || 600;
+        newX = Math.max(0, Math.min(rw - TILE, newX));
+        newY = Math.max(0, Math.min(rh - TILE, newY));
+      }
+
+      // Only move if not blocked
+      if (!window.isColliding) {
+        window.player.x = newX;
+        window.player.y = newY;
+      } else {
+        // Check obstacles
+        const room = window.MapManager ? window.MapManager.current() : null;
+        let blocked = false;
+        if (room) {
+          const testHitbox = { x: newX, y: newY, width: TILE, height: TILE };
+          for (const obs of room.obstacles) {
+            if (window.isColliding(testHitbox, obs)) {
+              blocked = true;
+              break;
+            }
+          }
+        }
+        if (!blocked) {
+          window.player.x = newX;
+          window.player.y = newY;
+        }
+      }
+    }
   }
 
   function heal(amount) {
+    if (currentHP < maxHP && window.AudioManager) {
+      window.AudioManager.playHealSound();
+    }
     currentHP = Math.min(maxHP, currentHP + amount);
   }
 
@@ -77,8 +149,11 @@
     get currentHP() { return currentHP; },
     set currentHP(v) { currentHP = v; },
     set maxHP(v) { maxHP = v; },
+    get isImmune() { return Date.now() < immuneUntil; },
+    get immuneUntil() { return immuneUntil; },
     takeDamage,
     heal,
-    draw: drawHealthBar
+    draw: drawHealthBar,
+    resetImmunity() { immuneUntil = 0; }
   };
 })();

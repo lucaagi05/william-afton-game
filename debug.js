@@ -20,6 +20,7 @@
     'Jump to Room',
     'Show/Hide Hitboxes',
     'Show/Hide Tile Grid',
+    'Show/Hide Coordinates',
     'Toggle Entity Positions'
   ];
 
@@ -50,8 +51,8 @@
       return;
     }
 
-    const panelW = 340;
-    const panelH = debugSubMenu ? 400 : 340;
+    const panelW = 350;
+    const panelH = debugSubMenu ? 600 : 440;
     const px = 30;
     const py = (ch - panelH) / 2;
 
@@ -90,15 +91,17 @@
       const statusY = startY + MENU_OPTIONS.length * 30 + 15;
       ctx.fillStyle = window.showHitboxes ? '#0f0' : '#555';
       ctx.fillText('Hitboxes: ' + (window.showHitboxes ? 'ON' : 'OFF'), px + 15, statusY);
-      ctx.fillStyle = window.showTileGrid ? '#0f0' : '#555';
+      ctx.fillStyle = window.showTileGrid ? '#0f0' : '#55555565';
       ctx.fillText('Tile Grid: ' + (window.showTileGrid ? 'ON' : 'OFF'), px + 180, statusY);
+      ctx.fillStyle = window.showCoordinates ? '#0f0' : '#555';
+      ctx.fillText('Coords: ' + (window.showCoordinates ? 'ON' : 'OFF'), px + 15, statusY + 18);
 
       // Show player tile position
       if (window.player) {
         const tileX = Math.floor(window.player.x / TILE_SIZE);
         const tileY = Math.floor(window.player.y / TILE_SIZE);
         ctx.fillStyle = '#0f0';
-        ctx.fillText('Player Tile: ' + tileX + ',' + tileY, px + 15, statusY + 18);
+        ctx.fillText('Player Tile: ' + tileX + ',' + tileY, px + 180, statusY + 18);
       }
     }
 
@@ -429,6 +432,10 @@
         window.showTileGrid = !window.showTileGrid;
         break;
 
+      case 'Show/Hide Coordinates':
+        window.showCoordinates = !window.showCoordinates;
+        break;
+
       case 'Toggle Entity Positions':
         debugSubMenu = 'entities';
         debugSubSelected = 0;
@@ -464,6 +471,7 @@
 
   window.DebugMenu = {
     get isOpen() { return debugOpen; },
-    draw: drawDebugMenu
+    draw: drawDebugMenu,
+    close() { debugOpen = false; debugSubMenu = null; }
   };
 })();

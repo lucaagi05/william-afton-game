@@ -12,10 +12,9 @@ window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
 // --- Tile Constants ---
-const TILE_SIZE = window.TILE_SIZE || 50;
 
 // --- State Variables ---
-const player = { x: 3 * TILE_SIZE, y: 2 * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE, color: '#fff', speed: TILE_SIZE };
+const player = { x: 3 * TILE_SIZE, y: 2 * TILE_SIZE, visualX: 3 * TILE_SIZE, visualY: 2 * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE, color: '#fff', speed: TILE_SIZE };
 window.player = player;
 
 const keys = {};
@@ -33,6 +32,202 @@ window.playerHitbox = playerHitbox;
 document.addEventListener('keydown', e => keys[e.key] = true);
 document.addEventListener('keyup', e => keys[e.key] = false);
 
+// ---------------------------------------------------------------------------
+// Fade Overlay System
+// ---------------------------------------------------------------------------
+const FadeOverlay = {
+  _alpha: 0,
+  _target: 0,
+  _startAlpha: 0,
+  _startTime: 0,
+  _duration: 0,
+  _callback: null,
+  _active: false,
+
+  fadeOut(duration, callback) {
+    this._startAlpha = this._alpha;
+    this._target = 1;
+    this._duration = duration;
+    this._startTime = Date.now();
+    this._callback = callback || null;
+    this._active = true;
+  },
+
+  fadeIn(duration, callback) {
+    this._startAlpha = this._alpha;
+    this._target = 0;
+    this._duration = duration;
+    this._startTime = Date.now();
+    this._callback = callback || null;
+    this._active = true;
+  },
+
+  setBlack() { this._alpha = 1; this._active = false; },
+  setClear() { this._alpha = 0; this._active = false; },
+
+  update() {
+    if (!this._active) return;
+    const elapsed = Date.now() - this._startTime;
+    const t = Math.min(1, elapsed / this._duration);
+    this._alpha = this._startAlpha + (this._target - this._startAlpha) * t;
+    if (t >= 1) {
+      this._alpha = this._target;
+      this._active = false;
+      if (this._callback) {
+        const cb = this._callback;
+        this._callback = null;
+        cb();
+      }
+    }
+  },
+
+  draw(ctx) {
+    if (this._alpha <= 0) return;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,' + this._alpha + ')';
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.restore();
+  },
+
+  get alpha() { return this._alpha; },
+  get isFading() { return this._active; }
+};
+window.FadeOverlay = FadeOverlay;
+
+// ---------------------------------------------------------------------------
+// Screen Shake System
+// ---------------------------------------------------------------------------
+let shakeEndTime = 0;
+let shakeIntensity = 0;
+
+window.triggerScreenShake = function(intensity, durationMs) {
+  shakeIntensity = intensity || 6;
+  shakeEndTime = Date.now() + (durationMs || 300);
+};
+
+function getShakeOffset() {
+  if (Date.now() < shakeEndTime) {
+    return {
+      x: (Math.random() - 0.5) * shakeIntensity * 2,
+      y: (Math.random() - 0.5) * shakeIntensity * 2
+    };
+  }
+  return { x: 0, y: 0 };
+}
+
+// ---------------------------------------------------------------------------
+// Game Over State Machine
+// ---------------------------------------------------------------------------
+let gameOverState = 'none'; // 'none' | 'freeze' | 'fadeout' | 'screen' | 'fadeback'
+let gameOverStartTime = 0;
+const GAME_OVER_FREEZE_DURATION = 5000; // 5 seconds
+
+function startGameOver() {
+  if (gameOverState !== 'none') return;
+  gameOverState = 'freeze';
+  gameOverStartTime = Date.now();
+  if (window.AudioManager) window.AudioManager.playPlayerDeathSound();
+  if (window.AudioManager) window.AudioManager.stopMusic();
+}
+
+function drawGameOverScreen(ctx) {
+  const cw = ctx.canvas.width;
+  const ch = ctx.canvas.height;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, cw, ch);
+
+  ctx.save();
+  ctx.font = '64px monospace';
+  ctx.fillStyle = '#f00';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('GAME OVER', cw / 2, ch / 2 - 30);
+
+  ctx.font = '18px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.fillText('Press Enter to continue', cw / 2, ch / 2 + 40);
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------------------
+// Weapon Attack System
+// ---------------------------------------------------------------------------
+let attackCooldownEnd = 0;
+let attackVisualEnd = 0;
+let attackDir = 'down';
+const ATTACK_COOLDOWN = 400; // ms between attacks
+const ATTACK_VISUAL_DURATION = 200; // how long the slash shows
+
+function tryWeaponAttack() {
+  const now = Date.now();
+  if (now < attackCooldownEnd) return;
+  if (!window.Inventory || !window.Inventory.equippedWeapon) return;
+
+  const weaponId = window.Inventory.equippedWeapon;
+  const weaponDef = window.INVENTORY_ITEMS[weaponId];
+  if (!weaponDef) return;
+
+  attackCooldownEnd = now + ATTACK_COOLDOWN;
+  attackVisualEnd = now + ATTACK_VISUAL_DURATION;
+  attackDir = window.playerDir;
+
+  // Play swing sound
+  if (window.AudioManager) window.AudioManager.playKnifeUseSound();
+
+  // Determine attack hitbox (1 tile in front of player)
+  let atkX = player.x, atkY = player.y;
+  if (attackDir === 'up') atkY -= TILE_SIZE;
+  else if (attackDir === 'down') atkY += TILE_SIZE;
+  else if (attackDir === 'left') atkX -= TILE_SIZE;
+  else if (attackDir === 'right') atkX += TILE_SIZE;
+
+  const atkHitbox = { x: atkX, y: atkY, width: TILE_SIZE, height: TILE_SIZE };
+
+  // Check attackable entities in current room
+  const room = window.MapManager.currentRoom;
+  for (const ent of window.Entities) {
+    if (ent.room !== room) continue;
+    if (!ent.attackable || ent.dead) continue;
+    const entBox = ent.area || (ent.hitbox ? ent.hitbox : null);
+    if (!entBox) continue;
+    if (window.isColliding(atkHitbox, entBox)) {
+      // Deal damage
+      const dmg = weaponDef.damage || 1;
+      ent.hp = (ent.hp || 0) - dmg;
+      ent.showHealthBar = true;
+      if (window.AudioManager) window.AudioManager.playHitEnemySound();
+      if (ent.hp <= 0) {
+        ent.hp = 0;
+        ent.dead = true;
+        if (window.AudioManager) window.AudioManager.playEntityDeathSound();
+      }
+    }
+  }
+}
+
+function drawAttackVisual(ctx) {
+  if (Date.now() >= attackVisualEnd) return;
+  let atkX = player.visualX, atkY = player.visualY;
+  if (attackDir === 'up') atkY -= TILE_SIZE;
+  else if (attackDir === 'down') atkY += TILE_SIZE;
+  else if (attackDir === 'left') atkX -= TILE_SIZE;
+  else if (attackDir === 'right') atkX += TILE_SIZE;
+
+  ctx.save();
+  ctx.globalAlpha = 0.7;
+  ctx.fillStyle = '#fff';
+  // Draw a slash line
+  const cx = atkX + TILE_SIZE / 2;
+  const cy = atkY + TILE_SIZE / 2;
+  ctx.translate(cx, cy);
+  if (attackDir === 'up' || attackDir === 'down') {
+    ctx.fillRect(-TILE_SIZE * 0.4, -3, TILE_SIZE * 0.8, 6);
+  } else {
+    ctx.fillRect(-3, -TILE_SIZE * 0.4, 6, TILE_SIZE * 0.8);
+  }
+  ctx.restore();
+}
+
 // --- Room Viewport Offset ---
 function getRoomDimensions() {
   const room = window.MapManager.current();
@@ -44,9 +239,29 @@ function getRoomDimensions() {
 
 function getRoomOffset() {
   const { w, h } = getRoomDimensions();
+  const px = player.visualX + player.width / 2;
+  const py = player.visualY + player.height / 2;
+
+  let offsetX = 0;
+  let offsetY = 0;
+
+  if (w <= canvas.width) {
+    offsetX = (canvas.width - w) / 2;
+  } else {
+    const idealX = (canvas.width / 2) - px;
+    offsetX = Math.min(0, Math.max(canvas.width - w, idealX));
+  }
+
+  if (h <= canvas.height) {
+    offsetY = (canvas.height - h) / 2;
+  } else {
+    const idealY = (canvas.height / 2) - py;
+    offsetY = Math.min(0, Math.max(canvas.height - h, idealY));
+  }
+
   return {
-    x: Math.floor((canvas.width - w) / 2),
-    y: Math.floor((canvas.height - h) / 2)
+    x: Math.floor(offsetX),
+    y: Math.floor(offsetY)
   };
 }
 
@@ -110,7 +325,7 @@ function drawDoorIndicators() {
   const room = window.MapManager.current();
   const rw = room.pixelWidth || 600;
   const rh = room.pixelHeight || 600;
-  const NEARBY = TILE_SIZE * 3; // Show arrow when within 3 tiles
+  const NEARBY = TILE_SIZE * 1; // Show arrow when within 1 tile
 
   for (const door of room.doors) {
     if (door.type !== 'door') continue;
@@ -151,7 +366,7 @@ function drawDoorIndicators() {
       dist = Math.abs(px - rw) + Math.abs(py - doorCY);
     }
 
-    if (dist > NEARBY * 3) continue;
+    if (dist > NEARBY) continue;
 
     // Draw arrow pointing in exit direction
     ctx.save();
@@ -229,7 +444,7 @@ function drawTileGrid() {
   const rh = room.pixelHeight || 600;
 
   ctx.save();
-  ctx.strokeStyle = 'rgba(0, 255, 0, 0.3)';
+  ctx.strokeStyle = 'rgba(0, 255, 0, 0.5)';
   ctx.lineWidth = 0.5;
 
   for (let x = 0; x <= rw; x += TILE_SIZE) {
@@ -264,36 +479,40 @@ function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   const offset = getRoomOffset();
+  const shake = getShakeOffset();
 
   // --- Room-local drawing (translated) ---
   ctx.save();
-  ctx.translate(offset.x, offset.y);
+  ctx.translate(offset.x + shake.x, offset.y + shake.y);
 
   drawBorder();
   drawDoorIndicators();
   drawRoomElements();
+  drawAttackVisual(ctx);
   drawTileGrid();
 
   if (window.showHitboxes) {
     ctx.save();
     ctx.lineWidth = 2;
-    ctx.strokeStyle = '#f00';
+    ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
     for (const obs of window.MapManager.current().obstacles) {
       ctx.strokeRect(obs.x, obs.y, obs.width, obs.height);
     }
-    ctx.strokeStyle = '#00f';
+    ctx.strokeStyle = 'rgba(0, 0, 255, 0.5)';
     for (const ent of window.MapManager.current().entities) {
       if (ent.interactionArea) {
         const ia = ent.interactionArea;
         ctx.strokeRect(ia.x, ia.y, ia.width, ia.height);
       }
     }
-    ctx.strokeStyle = '#ff0';
+    ctx.strokeStyle = 'rgba(255, 255, 0, 0.5)';
     ctx.strokeRect(playerHitbox.x, playerHitbox.y, playerHitbox.width, playerHitbox.height);
     ctx.restore();
   }
 
-  // Room name label
+  ctx.restore(); // end room-local
+
+  // Room name label (canvas-global)
   ctx.save();
   ctx.font = '14px monospace';
   ctx.fillStyle = 'rgba(255,255,255,0.4)';
@@ -302,7 +521,19 @@ function draw() {
   ctx.fillText(window.MapManager.current().name, 10, 10);
   ctx.restore();
 
-  ctx.restore(); // end room-local
+  // Coordinates UI (canvas-global)
+  if (window.showCoordinates && window.player) {
+    ctx.save();
+    ctx.font = '14px monospace';
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'top';
+    const tx = Math.floor(window.player.x / TILE_SIZE);
+    const ty = Math.floor(window.player.y / TILE_SIZE);
+    ctx.fillText(`Pxl: ${window.player.x}, ${window.player.y}`, canvas.width - 10, 10);
+    ctx.fillText(`Tile: ${tx}, ${ty}`, canvas.width - 10, 30);
+    ctx.restore();
+  }
 
   // Textboxes (canvas-global)
   window.InteractionManager.draw(ctx);
@@ -311,6 +542,20 @@ function draw() {
   if (window.Minimap) window.Minimap.draw(ctx);
   if (window.Inventory) window.Inventory.draw(ctx);
   if (window.Health) window.Health.draw(ctx);
+
+  // Equipped weapon indicator
+  if (window.Inventory && window.Inventory.equippedWeapon && !window.Inventory.isOpen) {
+    const wDef = window.INVENTORY_ITEMS[window.Inventory.equippedWeapon];
+    if (wDef) {
+      ctx.save();
+      ctx.font = '12px monospace';
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('⚔ ' + wDef.name, 22, canvas.height - 15);
+      ctx.restore();
+    }
+  }
 
   // Pause menu popup (canvas-global)
   if (window.gameMenu && window.gameMenu.showPauseMenu) {
@@ -338,21 +583,93 @@ function draw() {
     ctx.stroke();
   }
   ctx.restore();
+
+  // Fade overlay (very last thing drawn)
+  FadeOverlay.draw(ctx);
 }
 
 // --- Game Loop ---
 function gameLoop() {
+  FadeOverlay.update();
+
+  // --- Game Over state machine ---
+  if (gameOverState !== 'none') {
+    const elapsed = Date.now() - gameOverStartTime;
+
+    if (gameOverState === 'freeze') {
+      // Still render the game world frozen
+      draw();
+      if (elapsed >= GAME_OVER_FREEZE_DURATION) {
+        gameOverState = 'fadeout';
+        FadeOverlay.fadeOut(1500, function() {
+          gameOverState = 'screen';
+        });
+      }
+    } else if (gameOverState === 'fadeout') {
+      draw();
+    } else if (gameOverState === 'screen') {
+      drawGameOverScreen(ctx);
+    } else if (gameOverState === 'fadeback') {
+      drawGameOverScreen(ctx);
+      // FadeOverlay handles the transition; callback will reset state
+    }
+    requestAnimationFrame(gameLoop);
+    return;
+  }
+
   if (window.gameMenu && window.gameMenu.state.isActive) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     window.gameMenu.draw(ctx);
+    FadeOverlay.draw(ctx);
     window.AudioManager.setContext('menu');
   } else {
-    update();
-    draw();
-    window.AudioManager.setContext(window.MapManager.currentRoom);
+    // Check for game over trigger
+    if (window.Health && window.Health.currentHP <= 0 && gameOverState === 'none') {
+      startGameOver();
+    } else {
+      update();
+      draw();
+      window.AudioManager.setContext(window.MapManager.currentRoom);
+    }
   }
   requestAnimationFrame(gameLoop);
 }
+
+// Game Over input handler
+document.addEventListener('keydown', function(e) {
+  if (gameOverState === 'screen' && e.key === 'Enter') {
+    gameOverState = 'fadeback';
+    FadeOverlay.fadeOut(1000, function() {
+      // Reset everything and go back to menu
+      gameOverState = 'none';
+      if (window.gameMenu) {
+        window.gameMenu.resetGameState();
+        window.gameMenu.state.isActive = true;
+        window.gameMenu.state.currentMenu = 'root';
+        window.gameMenu.state.selectedOption = 0;
+        window.gameMenu.setGameStarted(false);
+        window.gameMenu.setFirstStart(true);
+        window.gameMenu.rebuildMenuOptions();
+      }
+      FadeOverlay.fadeIn(1000);
+    });
+  }
+});
+
+// Weapon attack input handler
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Shift') {
+    // Don't attack if any overlay/menu is open
+    if (window.gameMenu && window.gameMenu.state.isActive) return;
+    if (window.gameMenu && window.gameMenu.showExitConfirm) return;
+    if (window.gameMenu && window.gameMenu.showPauseMenu) return;
+    if (window.Inventory && window.Inventory.isOpen) return;
+    if (window.DebugMenu && window.DebugMenu.isOpen) return;
+    if (window.InteractionManager && window.InteractionManager.activeInteraction) return;
+    if (gameOverState !== 'none') return;
+    tryWeaponAttack();
+  }
+});
 
 // --- Tile collision check ---
 function isTileBlocked(newX, newY) {
@@ -373,7 +690,11 @@ function update() {
   const rw = room.pixelWidth || 600;
   const rh = room.pixelHeight || 600;
 
-  // Sprint
+  // Linear Interpolation for Smooth Tweening
+  player.visualX += (player.x - player.visualX) * 0.3;
+  player.visualY += (player.y - player.visualY) * 0.3;
+
+  // Sprint (only when not attacking with Shift)
   const sprinting = keys[' '];
   const moveDelay = sprinting ? BASE_MOVE_DELAY / 2 : BASE_MOVE_DELAY;
 
@@ -386,10 +707,15 @@ function update() {
 
   if (now - lastMoveTime >= moveDelay && !blocked) {
     let dx = 0, dy = 0;
-    const up    = keys['ArrowUp']    || keys['w'] || keys['W'];
-    const down  = keys['ArrowDown']  || keys['s'] || keys['S'];
-    const left  = keys['ArrowLeft']  || keys['a'] || keys['A'];
-    const right = keys['ArrowRight'] || keys['d'] || keys['D'];
+    let up    = keys['ArrowUp']    || keys['w'] || keys['W'] || keys['Numpad8'] || keys['8'];
+    let down  = keys['ArrowDown']  || keys['s'] || keys['S'] || keys['Numpad2'] || keys['2'];
+    let left  = keys['ArrowLeft']  || keys['a'] || keys['A'] || keys['Numpad4'] || keys['4'];
+    let right = keys['ArrowRight'] || keys['d'] || keys['D'] || keys['Numpad6'] || keys['6'];
+
+    if (keys['Numpad7'] || keys['7']) { up = true; left = true; }
+    if (keys['Numpad9'] || keys['9']) { up = true; right = true; }
+    if (keys['Numpad1'] || keys['1']) { down = true; left = true; }
+    if (keys['Numpad3'] || keys['3']) { down = true; right = true; }
 
     if (up)    dy = -1;
     if (down)  dy = 1;
@@ -397,18 +723,22 @@ function update() {
     if (right) dx = 1;
 
     if (dx !== 0 || dy !== 0) {
-      // Set facing direction (last cardinal direction for diagonal)
-      if (dy === -1 && dx === 0) window.playerDir = 'up';
-      else if (dy === 1 && dx === 0) window.playerDir = 'down';
-      else if (dx === -1 && dy === 0) window.playerDir = 'left';
-      else if (dx === 1 && dy === 0) window.playerDir = 'right';
-      else if (dy === -1) window.playerDir = 'up';
-      else if (dy === 1) window.playerDir = 'down';
-      else if (dx === -1) window.playerDir = 'left';
-      else if (dx === 1) window.playerDir = 'right';
+      let newDir = window.playerDir;
+      if (dy === -1 && dx === 0) newDir = 'up';
+      else if (dy === 1 && dx === 0) newDir = 'down';
+      else if (dx === -1 && dy === 0) newDir = 'left';
+      else if (dx === 1 && dy === 0) newDir = 'right';
+      else if (dy === -1) newDir = 'up';
+      else if (dy === 1) newDir = 'down';
+      else if (dx === -1) newDir = 'left';
+      else if (dx === 1) newDir = 'right';
 
-      const newX = player.x + dx * TILE_SIZE;
-      const newY = player.y + dy * TILE_SIZE;
+      if (window.playerDir !== newDir) {
+        window.playerDir = newDir;
+        lastMoveTime = now - Math.max(0, moveDelay - 100);
+      } else {
+        const newX = player.x + dx * TILE_SIZE;
+        const newY = player.y + dy * TILE_SIZE;
 
       // Check room bounds with door awareness
       const centerX = newX + TILE_SIZE / 2;
@@ -459,8 +789,11 @@ function update() {
           moved = true;
         }
       }
-
-      if (moved) lastMoveTime = now;
+        if (moved) {
+          lastMoveTime = now;
+          if (window.AudioManager) window.AudioManager.playWalkSound();
+        }
+      }
     }
   }
 

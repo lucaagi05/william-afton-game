@@ -1,48 +1,98 @@
-// minimap.js - Toggleable minimap showing connected rooms
+// minimap.js - True Topological Auto-Stitching Minimap
 
 let minimapVisible = true;
+let cachedHouseLayout = null;
+let cachedGardenLayout = null;
 
-// House rooms (connected)
-const MINIMAP_HOUSE_ROOMS = {
-  room1: { gx: 0,   gy: 0,   gw: 1,   gh: 1,   label: 'R1' },
-  room2: { gx: 0,   gy: 1,   gw: 1,   gh: 1,   label: 'R2' },
-  room3: { gx: 1,   gy: 1,   gw: 1.5, gh: 0.5, label: 'Hall' },
-  room4: { gx: 2.5, gy: 1,   gw: 0.6, gh: 0.6, label: 'R4' }
-};
+function getRoomSize(id) {
+  const roomDef = window.MapManager ? window.MapManager.rooms[id] : null;
+  if (roomDef) {
+    return {
+      w: (roomDef.pixelWidth || 600) / 600,
+      h: (roomDef.pixelHeight || 600) / 600
+    };
+  }
+  return { w: 1, h: 1 };
+}
 
-const MINIMAP_HOUSE_CONNECTIONS = [
-  { from: 'room1', to: 'room2' },
-  { from: 'room2', to: 'room3' },
-  { from: 'room3', to: 'room4' }
-];
+function buildTopologicalLayout(startRoomId) {
+  if (!window.Entities || !window.MapManager) return {};
 
-// Garden — separate world
-const MINIMAP_GARDEN = {
-  garden: { gx: 0, gy: 0, gw: 1.4, gh: 1.4, label: 'Garden' }
-};
+  const layout = {};
+  const startRoom = window.MapManager.rooms[startRoomId];
+  layout[startRoomId] = { gx: 0, gy: 0, label: startRoom ? (startRoom.name || startRoomId) : startRoomId };
+  
+  const queue = [startRoomId];
+  let safety = 100;
 
-function drawMinimapPanel(ctx, rooms, connections, title, baseX, baseY, scale) {
-  // Draw connections
-  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-  ctx.lineWidth = 2;
-  for (const conn of connections) {
-    const f = rooms[conn.from];
-    const t = rooms[conn.to];
-    if (!f || !t) continue;
-    ctx.beginPath();
-    ctx.moveTo(baseX + (f.gx + f.gw / 2) * scale, baseY + (f.gy + f.gh / 2) * scale);
-    ctx.lineTo(baseX + (t.gx + t.gw / 2) * scale, baseY + (t.gy + t.gh / 2) * scale);
-    ctx.stroke();
+  while (queue.length > 0 && safety-- > 0) {
+    const curr = queue.shift();
+    const currLayout = layout[curr];
+    const currDef = window.MapManager.rooms[curr];
+    if (!currDef) continue;
+
+    const doors = window.Entities.filter(e => e.type === 'door' && e.room === curr);
+
+    for (const d of doors) {
+      const target = d.targetRoom;
+      if (layout[target]) continue; // Already mapped
+
+      // Segregate logic based on world bounds (House vs Garden)
+      if (startRoomId === 'room1' && target === 'garden') continue;
+      if (startRoomId === 'garden' && target !== 'garden') continue;
+
+      const targetDef = window.MapManager.rooms[target];
+      if (!targetDef) continue;
+      
+      const targetDoor = window.Entities.find(e => e.type === 'door' && e.room === target && e.targetRoom === curr);
+      if (!targetDoor) continue; // Requires reciprocal door for spatial linking
+
+      let ngx = currLayout.gx;
+      let ngy = currLayout.gy;
+
+      const cw = (currDef.pixelWidth || 600) / 600;
+      const ch = (currDef.pixelHeight || 600) / 600;
+      const tw = (targetDef.pixelWidth || 600) / 600;
+      const th = (targetDef.pixelHeight || 600) / 600;
+
+      const currDx = (d.x || 0) / 600;
+      const currDy = (d.y || 0) / 600;
+      const tarDx = (targetDoor.x || 0) / 600;
+      const tarDy = (targetDoor.y || 0) / 600;
+
+      // Calculate perfect puzzle-stitch offset coordinates based on door alignments
+      if (d.edge === 'bottom') {
+        ngy = currLayout.gy + ch;
+        ngx = currLayout.gx + currDx - tarDx;
+      } else if (d.edge === 'top') {
+        ngy = currLayout.gy - th;
+        ngx = currLayout.gx + currDx - tarDx;
+      } else if (d.edge === 'right') {
+        ngx = currLayout.gx + cw;
+        ngy = currLayout.gy + currDy - tarDy;
+      } else if (d.edge === 'left') {
+        ngx = currLayout.gx - tw;
+        ngy = currLayout.gy + currDy - tarDy;
+      }
+
+      layout[target] = { gx: ngx, gy: ngy, label: targetDef.name || target };
+      queue.push(target);
+    }
   }
 
+  return layout;
+}
+
+function drawMinimapPanel(ctx, rooms, title, baseX, baseY, scale) {
   const currentRoom = window.MapManager ? window.MapManager.currentRoom : 'room1';
 
-  // Draw rooms
+  // Draw rooms flush with no abstract connections
   for (const [id, r] of Object.entries(rooms)) {
+    const rs = getRoomSize(id);
     const rx = baseX + r.gx * scale;
     const ry = baseY + r.gy * scale;
-    const rw = r.gw * scale;
-    const rh = r.gh * scale;
+    const rw = rs.w * scale;
+    const rh = rs.h * scale;
 
     ctx.fillStyle = id === currentRoom ? 'rgba(255,0,0,0.35)' : 'rgba(255,255,255,0.08)';
     ctx.fillRect(rx, ry, rw, rh);
@@ -54,15 +104,22 @@ function drawMinimapPanel(ctx, rooms, connections, title, baseX, baseY, scale) {
     ctx.fillStyle = id === currentRoom ? '#faa' : 'rgba(255,255,255,0.5)';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(r.label, rx + rw / 2, ry + rh / 2);
+    
+    // Fit text labels loosely
+    let text = r.label;
+    if (text.length > 5 && rw < 40) text = text.substring(0, 3) + '.';
+    ctx.fillText(text, rx + rw / 2, ry + rh / 2);
   }
 }
 
 function drawMinimap(ctx) {
   if (!minimapVisible) return;
+  
+  // Rebuild dynamically if uncreated
+  if (!cachedHouseLayout) cachedHouseLayout = buildTopologicalLayout('room1');
+  if (!cachedGardenLayout) cachedGardenLayout = buildTopologicalLayout('garden');
 
   const canvas = ctx.canvas;
-  const scale = 50;
   const padding = 15;
 
   const currentRoom = window.MapManager ? window.MapManager.currentRoom : 'room1';
@@ -70,47 +127,59 @@ function drawMinimap(ctx) {
 
   ctx.save();
 
-  if (!inGarden) {
-    // Show house map
-    const mapW = 3.6 * scale;
-    const mapH = 2.2 * scale;
-    const baseX = canvas.width - mapW - padding - 10;
-    const baseY = canvas.height - mapH - padding - 10;
+  const activeMap = inGarden ? cachedGardenLayout : cachedHouseLayout;
+  const title = inGarden ? 'OUTSIDE [H]' : 'HOUSE [H]';
 
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-    ctx.lineWidth = 1;
-    ctx.fillRect(baseX - 8, baseY - 22, mapW + 16, mapH + 30);
-    ctx.strokeRect(baseX - 8, baseY - 22, mapW + 16, mapH + 30);
+  // Calculate dynamic blueprint bounds
+  let minX = Infinity, minY = Infinity;
+  let maxX = -Infinity, maxY = -Infinity;
 
-    ctx.font = '11px monospace';
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    ctx.fillText('HOUSE [H]', baseX - 2, baseY - 18);
-
-    drawMinimapPanel(ctx, MINIMAP_HOUSE_ROOMS, MINIMAP_HOUSE_CONNECTIONS, 'HOUSE', baseX, baseY, scale);
-  } else {
-    // Show garden map
-    const mapW = 1.8 * scale;
-    const mapH = 1.8 * scale;
-    const baseX = canvas.width - mapW - padding - 10;
-    const baseY = canvas.height - mapH - padding - 10;
-
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-    ctx.lineWidth = 1;
-    ctx.fillRect(baseX - 8, baseY - 22, mapW + 16, mapH + 30);
-    ctx.strokeRect(baseX - 8, baseY - 22, mapW + 16, mapH + 30);
-
-    ctx.font = '11px monospace';
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    ctx.fillText('OUTSIDE [H]', baseX - 2, baseY - 18);
-
-    drawMinimapPanel(ctx, MINIMAP_GARDEN, [], 'OUTSIDE', baseX, baseY, scale);
+  for (const [id, r] of Object.entries(activeMap)) {
+    const rs = getRoomSize(id);
+    minX = Math.min(minX, r.gx);
+    minY = Math.min(minY, r.gy);
+    maxX = Math.max(maxX, r.gx + rs.w);
+    maxY = Math.max(maxY, r.gy + rs.h);
   }
+
+  // Fallback map bounds if completely detached
+  if (minX === Infinity) { minX = 0; minY = 0; maxX = 2; maxY = 2; }
+
+  // Check scale fit to ensure massive maps fit comfortably on screen
+  let baseScale = 50;
+  let mapW = (maxX - minX) * baseScale;
+  let mapH = (maxY - minY) * baseScale;
+  
+  // Dynamic scale reduction if map grows more than half canvas width/height
+  const maxAllowedW = canvas.width * 0.4;
+  const maxAllowedH = canvas.height * 0.4;
+  if (mapW > maxAllowedW || mapH > maxAllowedH) {
+    const scaleRatio = Math.min(maxAllowedW / mapW, maxAllowedH / mapH);
+    baseScale = baseScale * scaleRatio;
+    mapW = (maxX - minX) * baseScale;
+    mapH = (maxY - minY) * baseScale;
+  }
+
+  const baseX = canvas.width - mapW - padding - 10 - (minX * baseScale);
+  const baseY = canvas.height - mapH - padding - 10 - (minY * baseScale);
+
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+  ctx.lineWidth = 1;
+
+  const bgX = canvas.width - mapW - padding - 10;
+  const bgY = canvas.height - mapH - padding - 10;
+  
+  ctx.fillRect(bgX - 8, bgY - 22, mapW + 16, mapH + 30);
+  ctx.strokeRect(bgX - 8, bgY - 22, mapW + 16, mapH + 30);
+
+  ctx.font = '11px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(title, bgX - 2, bgY - 18);
+
+  drawMinimapPanel(ctx, activeMap, title, baseX, baseY, baseScale);
 
   ctx.restore();
 }
@@ -120,8 +189,13 @@ document.addEventListener('keydown', function (e) {
   if (e.key.toLowerCase() === 'h') minimapVisible = !minimapVisible;
 });
 
+// We expose invalidateTopologicalCache to debug module
 window.Minimap = {
   draw: drawMinimap,
   get visible() { return minimapVisible; },
-  set visible(v) { minimapVisible = v; }
+  set visible(v) { minimapVisible = v; },
+  invalidateCache() {
+    cachedHouseLayout = null;
+    cachedGardenLayout = null;
+  }
 };

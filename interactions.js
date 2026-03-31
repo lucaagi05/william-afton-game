@@ -111,10 +111,9 @@ document.addEventListener('keydown', function (e) {
   if (e.key === 'Enter' && !activeInteraction) {
     for (const inter of window.interactions) {
       if (inter.room && inter.room !== window.MapManager.currentRoom) continue;
-      if (window.isColliding(window.playerHitbox, inter.area)) {
+      if (window.isTouching(window.playerHitbox, inter.area)) {
         // Check trigger condition if defined
         if (inter.trigger && !inter.trigger()) continue;
-        window.AudioManager.playTextboxSound();
         // Run onActivate callback if defined
         if (inter.onActivate) inter.onActivate();
         activeInteraction = inter;
@@ -145,6 +144,7 @@ document.addEventListener('keydown', function (e) {
         window.AudioManager.playTextboxSound();
         const selected = c.options[choiceIndex];
         if (selected === 'Yes') {
+          if (window.AudioManager) window.AudioManager.playSaveGameSound();
           window.currentCheckpoint = activeInteraction.id || 'checkpoint';
           if (window.gameMenu && window.gameMenu.saveGame) {
             window.gameMenu.saveGame(1);
@@ -316,6 +316,7 @@ window.interactions = [
       const e = window.Entities.find(en => en.id === 'key_item');
       if (e) e.collected = true;
       if (window.Inventory) window.Inventory.add('key');
+      if (window.AudioManager) window.AudioManager.playItemPickupSound();
     },
     text: {
       pages: ["You found a {Key:#ff0}. It looks important."],
@@ -342,6 +343,7 @@ window.interactions = [
       const e = window.Entities.find(en => en.id === 'candy_item');
       if (e) e.collected = true;
       if (window.Inventory) window.Inventory.add('candy');
+      if (window.AudioManager) window.AudioManager.playItemPickupSound();
     },
     text: {
       pages: ["You picked up a {Candy:#4af}."],
@@ -368,6 +370,7 @@ window.interactions = [
       const e = window.Entities.find(en => en.id === 'candy_item_garden');
       if (e) e.collected = true;
       if (window.Inventory) window.Inventory.add('candy');
+      if (window.AudioManager) window.AudioManager.playItemPickupSound();
     },
     text: {
       pages: ["You picked up a {Candy:#4af}."],
@@ -386,7 +389,10 @@ window.interactions = [
       const e = window.Entities.find(en => en.id === 'red_circle');
       return e ? e.interactionArea : { x: -999, y: -999, width: 0, height: 0 };
     },
-    trigger() { return true; },
+    trigger() { 
+      const e = window.Entities.find(en => en.id === 'red_circle');
+      return e && !e.dead;
+    },
     onActivate() {
       if (window.Health) window.Health.takeDamage(1);
     },
@@ -410,6 +416,9 @@ window.interactions = [
     trigger() {
       const door = window.Entities.find(e => e.id === 'door_to_garden');
       return door && door.locked && !(window.Inventory && window.Inventory.has('key'));
+    },
+    onActivate() {
+      if (window.AudioManager) window.AudioManager.playLockedDoorSound();
     },
     text: {
       pages: ["The door is locked. You need a key."],
@@ -436,12 +445,40 @@ window.interactions = [
       const door = window.Entities.find(e => e.id === 'door_to_garden');
       if (door) door.locked = false;
       if (window.Inventory) window.Inventory.remove('key');
+      if (window.AudioManager) window.AudioManager.playUnlockDoorSound();
     },
     text: {
       pages: ["You used the {Key:#ff0}. The door is now open."],
       font: '20px monospace',
       color: '#0f0',
       frame: { fill: '#222', outline: '#0f0', height: 90, margin: 16 }
+    }
+  },
+
+  // --- KNIFE ITEM pickup ---
+  {
+    id: 'knife_item',
+    room: 'room1',
+    type: 'text',
+    get area() {
+      const e = window.Entities.find(en => en.id === 'knife_item');
+      return e && !e.collected ? e.interactionArea : { x: -999, y: -999, width: 0, height: 0 };
+    },
+    trigger() {
+      const e = window.Entities.find(en => en.id === 'knife_item');
+      return e && !e.collected;
+    },
+    onActivate() {
+      const e = window.Entities.find(en => en.id === 'knife_item');
+      if (e) e.collected = true;
+      if (window.Inventory) window.Inventory.add('knife');
+      if (window.AudioManager) window.AudioManager.playItemPickupSound();
+    },
+    text: {
+      pages: ["You found a {Knife:#f44}."],
+      font: '20px monospace',
+      color: '#fff',
+      frame: { fill: '#222', outline: '#f44', height: 90, margin: 16 }
     }
   }
 ];

@@ -29,10 +29,36 @@ const downloadBtn = {
 function drawPlayer(ctx, player) {
   if (spriteSheet.complete) {
     const frame = SPRITE_MAP[window.playerDir][window.animFrame];
+    const vx = player.visualX !== undefined ? player.visualX : player.x;
+    const vy = player.visualY !== undefined ? player.visualY : player.y;
+
+    // Immunity frame flickering
+    const immune = window.Health && window.Health.isImmune;
+    if (immune) {
+      // Toggle every ~80ms: visible, then blacked-out silhouette
+      const flickerPhase = Math.floor(Date.now() / 80) % 2;
+      if (flickerPhase === 1) {
+        // Draw blacked-out silhouette
+        ctx.save();
+        ctx.globalAlpha = 0.4;
+        ctx.drawImage(
+          spriteSheet,
+          frame.x * SPRITE_SIZE, frame.y * SPRITE_SIZE, SPRITE_SIZE, SPRITE_SIZE,
+          vx, vy, player.width, player.height
+        );
+        // Overlay dark tint
+        ctx.globalCompositeOperation = 'source-atop';
+        ctx.fillStyle = '#000';
+        ctx.fillRect(vx, vy, player.width, player.height);
+        ctx.restore();
+        return;
+      }
+    }
+
     ctx.drawImage(
       spriteSheet,
       frame.x * SPRITE_SIZE, frame.y * SPRITE_SIZE, SPRITE_SIZE, SPRITE_SIZE,
-      player.x, player.y, player.width, player.height
+      vx, vy, player.width, player.height
     );
   }
 }
@@ -45,6 +71,13 @@ function isColliding(a, b) {
     a.y + a.height > b.y;
 }
 
+function isTouching(a, b) {
+  return a.x <= b.x + b.width &&
+    a.x + a.width >= b.x &&
+    a.y <= b.y + b.height &&
+    a.y + a.height >= b.y;
+}
+
 // Export local constants for use in other modules
 window.SPRITE_MAP = SPRITE_MAP;
 window.spriteSheet = spriteSheet;
@@ -53,3 +86,4 @@ window.downloadIcon = downloadIcon;
 window.downloadBtn = downloadBtn;
 window.drawPlayer = drawPlayer;
 window.isColliding = isColliding;
+window.isTouching = isTouching;

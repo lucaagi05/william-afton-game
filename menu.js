@@ -59,6 +59,21 @@ function rebuildMenuOptions() {
 
 rebuildMenuOptions();
 
+// --- Helper: start game with fade ---
+function startGameWithFade() {
+  if (window.AudioManager) window.AudioManager.playStartGameSound();
+  if (window.FadeOverlay) {
+    window.FadeOverlay.fadeOut(1000, function() {
+      menuState.isActive = false;
+      gameStarted = true;
+      window.FadeOverlay.fadeIn(800);
+    });
+  } else {
+    menuState.isActive = false;
+    gameStarted = true;
+  }
+}
+
 // --- Video control ---
 function ensureVideoPlaying() {
   if (menuVideo && menuVideo.paused) {
@@ -73,6 +88,7 @@ function saveGame(slot) {
     playerY: window.player.y,
     currentRoom: window.MapManager ? window.MapManager.currentRoom : 'room1',
     inventory: window.Inventory ? window.Inventory.items.slice() : [],
+    equippedWeapon: window.Inventory ? window.Inventory.equippedWeapon : null,
     checkpoint: window.currentCheckpoint || null,
     health: window.Health ? window.Health.currentHP : 10
   };
@@ -98,6 +114,9 @@ function loadGame(slot) {
     if (d.health !== undefined && window.Health) {
       window.Health.currentHP = d.health;
     }
+    if (d.equippedWeapon !== undefined && window.Inventory) {
+      window.Inventory.equippedWeapon = d.equippedWeapon;
+    }
     window.currentCheckpoint = d.checkpoint;
     syncCollectedFlags();
     return true;
@@ -110,7 +129,8 @@ function syncCollectedFlags() {
   const itemMap = {
     'key_item': 'key',
     'candy_item': 'candy',
-    'candy_item_garden': 'candy'
+    'candy_item_garden': 'candy',
+    'knife_item': 'knife'
   };
   for (const ent of window.Entities) {
     if (ent.type === 'item' && itemMap[ent.id] !== undefined) {
@@ -151,13 +171,14 @@ function importSaveFromFile() {
       if (data.health !== undefined && window.Health) {
         window.Health.currentHP = data.health;
       }
+      if (data.equippedWeapon !== undefined && window.Inventory) {
+        window.Inventory.equippedWeapon = data.equippedWeapon;
+      }
       window.currentCheckpoint = data.checkpoint || null;
       syncCollectedFlags();
-      menuState.isActive = false;
-      gameStarted = true;
+      startGameWithFade();
       menuState.currentMenu = 'root';
       rebuildMenuOptions();
-      alert('Save loaded from file.');
     } catch (err) {
       alert('Invalid save file.');
     }
@@ -182,12 +203,19 @@ function resetGameState() {
       if (ent.type === 'item' && 'collected' in ent) {
         ent.collected = false;
       }
+      // Reset attackable entities
+      if (ent.attackable) {
+        ent.hp = ent.maxHp || 10;
+        ent.dead = false;
+        ent.showHealthBar = false;
+      }
     }
   }
   const gardenDoor = window.Entities && window.Entities.find(e => e.id === 'door_to_garden');
   if (gardenDoor) gardenDoor.locked = true;
   if (window.Health) {
     window.Health.currentHP = window.Health.maxHP;
+    if (window.Health.resetImmunity) window.Health.resetImmunity();
   }
   window.currentCheckpoint = null;
 }
@@ -197,7 +225,7 @@ function drawControlsPopup(ctx) {
   const cw = ctx.canvas.width;
   const ch = ctx.canvas.height;
   const boxW = Math.min(500, cw - 60);
-  const boxH = 340;
+  const boxH = 370;
   const bx = (cw - boxW) / 2;
   const by = (ch - boxH) / 2;
 
@@ -216,6 +244,7 @@ function drawControlsPopup(ctx) {
   const controls = [
     ['WASD / Arrows', 'Move'],
     ['Space',         'Run'],
+    ['Shift',         'Attack (weapon)'],
     ['Enter',         'Interact'],
     ['I',             'Inventory'],
     ['Tab',           'Switch Inv. Tab'],
@@ -367,9 +396,12 @@ function handleMenuInput(e) {
   if (showExitConfirm) {
     if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
       exitConfirmSelected = 0;
+      if (window.AudioManager) window.AudioManager.playMenuNavSound();
     } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
       exitConfirmSelected = 1;
+      if (window.AudioManager) window.AudioManager.playMenuNavSound();
     } else if (e.key === 'Enter') {
+      if (window.AudioManager) window.AudioManager.playMenuSelectSound();
       if (exitConfirmSelected === 0) {
         showExitConfirm = false;
         showPauseMenu = false;
@@ -394,9 +426,12 @@ function handleMenuInput(e) {
   if (showPauseMenu) {
     if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
       pauseMenuSelected = 0;
+      if (window.AudioManager) window.AudioManager.playMenuNavSound();
     } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
       pauseMenuSelected = 1;
+      if (window.AudioManager) window.AudioManager.playMenuNavSound();
     } else if (e.key === 'Enter') {
+      if (window.AudioManager) window.AudioManager.playMenuSelectSound();
       if (pauseMenuSelected === 0) {
         // Return to Game
         showPauseMenu = false;
@@ -411,8 +446,23 @@ function handleMenuInput(e) {
     return;
   }
 
-  // Esc key opens pause menu (in-game only)
+  // Esc key behavior (in-game only, not on main menu)
   if (e.key === 'Escape' && gameStarted && !menuState.isActive) {
+    // If textbox is active, do nothing
+    if (window.InteractionManager && window.InteractionManager.activeInteraction) {
+      return;
+    }
+    // If inventory is open, close it
+    if (window.Inventory && window.Inventory.isOpen) {
+      window.Inventory.close();
+      return;
+    }
+    // If debug menu is open, close it (handled in debug.js via '0' key, but Esc should also work)
+    if (window.DebugMenu && window.DebugMenu.isOpen) {
+      if (window.DebugMenu.close) window.DebugMenu.close();
+      return;
+    }
+    // Otherwise, open pause menu
     showPauseMenu = true;
     pauseMenuSelected = 0;
     return;
@@ -424,8 +474,7 @@ function handleMenuInput(e) {
   if (showingControls) {
     if (e.key === 'Enter') {
       showingControls = false;
-      menuState.isActive = false;
-      gameStarted = true;
+      startGameWithFade();
     }
     return;
   }
@@ -435,11 +484,14 @@ function handleMenuInput(e) {
 
   if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
     menuState.selectedOption = (menuState.selectedOption - 1 + currentOptions.length) % currentOptions.length;
+    if (window.AudioManager) window.AudioManager.playMenuNavSound();
   } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
     menuState.selectedOption = (menuState.selectedOption + 1) % currentOptions.length;
+    if (window.AudioManager) window.AudioManager.playMenuNavSound();
   } else if (e.key === 'Enter') {
     const option = currentOptions[menuState.selectedOption];
     if (!option || !option.enabled) return;
+    if (window.AudioManager) window.AudioManager.playMenuSelectSound();
 
     if (menuState.currentMenu === 'root') {
       switch (option.text) {
@@ -448,8 +500,7 @@ function handleMenuInput(e) {
             showingControls = true;
             firstStart = false;
           } else {
-            menuState.isActive = false;
-            gameStarted = true;
+            startGameWithFade();
           }
           break;
         case 'Load':
@@ -464,8 +515,7 @@ function handleMenuInput(e) {
       switch (option.text) {
         case 'Load from Browser': {
           if (loadGame('1')) {
-            menuState.isActive = false;
-            gameStarted = true;
+            startGameWithFade();
             menuState.currentMenu = 'root';
           } else {
             alert('No save data found.');

@@ -189,31 +189,55 @@ window.Entities = [
     }
   },
 
-  // Red circle entity — damages player on interaction, attackable enemy
+  // Red circle — AI-driven enemy that chases, attacks, and retreats
   {
     id: 'red_circle',
-    type: 'entity',
+    type: 'enemy',
     room: 'garden',
-    interactionId: 'red_circle',
     attackable: true,
-    hp: 10,
-    maxHp: 10,
+    hp: 9,
+    maxHp: 9,
     dead: false,
     showHealthBar: false,
     area: { x: 12 * TILE_SIZE, y: 8 * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE },
+    hitbox: { x: 12 * TILE_SIZE, y: 8 * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE },
     color: '#f44',
-    interactionArea: { x: 11 * TILE_SIZE, y: 7 * TILE_SIZE, width: TILE_SIZE * 3, height: TILE_SIZE * 3 },
     draw(ctx) {
       if (this.dead) return;
+      const cx = this.area.x + TILE_SIZE / 2;
+      const cy = this.area.y + TILE_SIZE / 2;
+      const ai = this._ai;
+      const isActive = ai && (ai.state === 'chase' || ai.state === 'attack' || ai.state === 'retreat');
+
       ctx.save();
+
+      // Pulsing glow when active
+      if (isActive) {
+        const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 150);
+        ctx.shadowColor = '#ff0000';
+        ctx.shadowBlur = 10 + pulse * 12;
+      }
+
       ctx.fillStyle = this.color;
       ctx.beginPath();
-      ctx.arc(
-        this.area.x + TILE_SIZE / 2,
-        this.area.y + TILE_SIZE / 2,
-        TILE_SIZE * 0.35, 0, Math.PI * 2
-      );
+      ctx.arc(cx, cy, TILE_SIZE * 0.35, 0, Math.PI * 2);
       ctx.fill();
+
+      // Eyes: small dots that look toward the player when active
+      if (isActive && window.player) {
+        const dx = window.player.x - this.area.x;
+        const dy = window.player.y - this.area.y;
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+        const lookX = (dx / len) * 4;
+        const lookY = (dy / len) * 4;
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(cx - 5 + lookX, cy - 3 + lookY, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(cx + 5 + lookX, cy - 3 + lookY, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
 
       // Health bar (shown after first hit)
       if (this.showHealthBar && this.hp > 0) {
@@ -222,6 +246,7 @@ window.Entities = [
         const barX = this.area.x + (TILE_SIZE - barW) / 2;
         const barY = this.area.y - 10;
         const pct = this.hp / this.maxHp;
+        ctx.shadowBlur = 0;
         ctx.fillStyle = 'rgba(0,0,0,0.6)';
         ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
         ctx.fillStyle = '#f44';

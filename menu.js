@@ -217,6 +217,7 @@ function resetGameState() {
     window.Health.currentHP = window.Health.maxHP;
     if (window.Health.resetImmunity) window.Health.resetImmunity();
   }
+  if (window.EnemyAI) window.EnemyAI.reset();
   window.currentCheckpoint = null;
 }
 

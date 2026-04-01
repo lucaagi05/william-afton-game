@@ -380,29 +380,8 @@ window.interactions = [
     }
   },
 
-  // --- RED CIRCLE entity (Garden) — damages on interaction ---
-  {
-    id: 'red_circle',
-    room: 'garden',
-    type: 'text',
-    get area() {
-      const e = window.Entities.find(en => en.id === 'red_circle');
-      return e ? e.interactionArea : { x: -999, y: -999, width: 0, height: 0 };
-    },
-    trigger() { 
-      const e = window.Entities.find(en => en.id === 'red_circle');
-      return e && !e.dead;
-    },
-    onActivate() {
-      if (window.Health) window.Health.takeDamage(1);
-    },
-    text: {
-      pages: ["Something sharp pricks you. You lost 1 HP."],
-      font: '20px monospace',
-      color: '#f44',
-      frame: { fill: '#222', outline: '#f44', height: 90, margin: 16 }
-    }
-  },
+
+
 
   // --- LOCKED DOOR — "Door is locked" (no key) ---
   {

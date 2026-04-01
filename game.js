@@ -32,6 +32,41 @@ window.playerHitbox = playerHitbox;
 document.addEventListener('keydown', e => keys[e.key] = true);
 document.addEventListener('keyup', e => keys[e.key] = false);
 
+// --- Gamepad State Tracking ---
+let lastGamepadKeys = {};
+function pollGamepad() {
+  const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+  const gp = gamepads.find(g => g !== null); // get first active gamepad
+  if (!gp) return;
+
+  const isPressed = (idx) => gp.buttons[idx] && (typeof gp.buttons[idx] === 'object' ? gp.buttons[idx].pressed : gp.buttons[idx] === 1.0);
+  const axisPressed = (idx, dir) => gp.axes[idx] && (dir > 0 ? gp.axes[idx] > 0.4 : gp.axes[idx] < -0.4);
+
+  const states = {
+    'ArrowUp': isPressed(12) || axisPressed(1, -1),
+    'ArrowDown': isPressed(13) || axisPressed(1, 1),
+    'ArrowLeft': isPressed(14) || axisPressed(0, -1),
+    'ArrowRight': isPressed(15) || axisPressed(0, 1),
+    'Enter': isPressed(0), // A: confirm
+    'Shift': isPressed(2), // X: attack
+    ' ': isPressed(4) || gp.axes[2] > 0.1 || gp.axes[5] > 0.1, // LT(Axis) / LB: run
+    'i': isPressed(7) || isPressed(9), // Menu (button 7 or 9): inventory
+    'Escape': isPressed(6) || isPressed(8) // button 6 or 8: exit / pause game
+  };
+
+  for (const key in states) {
+    if (states[key] && !lastGamepadKeys[key]) {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: key }));
+      keys[key] = true;
+    } else if (!states[key] && lastGamepadKeys[key]) {
+      document.dispatchEvent(new KeyboardEvent('keyup', { key: key }));
+      keys[key] = false;
+    }
+  }
+
+  lastGamepadKeys = states;
+}
+
 // ---------------------------------------------------------------------------
 // Fade Overlay System
 // ---------------------------------------------------------------------------
@@ -100,7 +135,7 @@ window.FadeOverlay = FadeOverlay;
 let shakeEndTime = 0;
 let shakeIntensity = 0;
 
-window.triggerScreenShake = function(intensity, durationMs) {
+window.triggerScreenShake = function (intensity, durationMs) {
   shakeIntensity = intensity || 6;
   shakeEndTime = Date.now() + (durationMs || 300);
 };
@@ -174,14 +209,36 @@ function tryWeaponAttack() {
   // Play swing sound
   if (window.AudioManager) window.AudioManager.playKnifeUseSound();
 
-  // Determine attack hitbox (1 tile in front of player)
+  // Determine attack hitbox (sweep: 3 tiles wide, 1 tile deep based on direction)
   let atkX = player.x, atkY = player.y;
-  if (attackDir === 'up') atkY -= TILE_SIZE;
-  else if (attackDir === 'down') atkY += TILE_SIZE;
-  else if (attackDir === 'left') atkX -= TILE_SIZE;
-  else if (attackDir === 'right') atkX += TILE_SIZE;
+  let atkWidth = TILE_SIZE, atkHeight = TILE_SIZE;
 
-  const atkHitbox = { x: atkX, y: atkY, width: TILE_SIZE, height: TILE_SIZE };
+  if (attackDir === 'up') {
+    atkY -= TILE_SIZE;
+    atkX -= TILE_SIZE;
+    atkWidth = TILE_SIZE * 3;
+    atkHeight = TILE_SIZE;
+  }
+  else if (attackDir === 'down') {
+    atkY += TILE_SIZE;
+    atkX -= TILE_SIZE;
+    atkWidth = TILE_SIZE * 3;
+    atkHeight = TILE_SIZE;
+  }
+  else if (attackDir === 'left') {
+    atkX -= TILE_SIZE;
+    atkY -= TILE_SIZE;
+    atkWidth = TILE_SIZE;
+    atkHeight = TILE_SIZE * 3;
+  }
+  else if (attackDir === 'right') {
+    atkX += TILE_SIZE;
+    atkY -= TILE_SIZE;
+    atkWidth = TILE_SIZE;
+    atkHeight = TILE_SIZE * 3;
+  }
+
+  const atkHitbox = { x: atkX, y: atkY, width: atkWidth, height: atkHeight };
 
   // Check attackable entities in current room
   const room = window.MapManager.currentRoom;
@@ -192,7 +249,7 @@ function tryWeaponAttack() {
     if (!entBox) continue;
     if (window.isColliding(atkHitbox, entBox)) {
       // Deal damage
-      const dmg = weaponDef.damage || 1;
+      const dmg = 3; // Enforce 3 HP knife damage
       ent.hp = (ent.hp || 0) - dmg;
       ent.showHealthBar = true;
       if (window.AudioManager) window.AudioManager.playHitEnemySound();
@@ -207,23 +264,24 @@ function tryWeaponAttack() {
 
 function drawAttackVisual(ctx) {
   if (Date.now() >= attackVisualEnd) return;
-  let atkX = player.visualX, atkY = player.visualY;
-  if (attackDir === 'up') atkY -= TILE_SIZE;
-  else if (attackDir === 'down') atkY += TILE_SIZE;
-  else if (attackDir === 'left') atkX -= TILE_SIZE;
-  else if (attackDir === 'right') atkX += TILE_SIZE;
+  let cx = player.visualX + TILE_SIZE / 2;
+  let cy = player.visualY + TILE_SIZE / 2;
+
+  if (attackDir === 'up') cy -= TILE_SIZE;
+  else if (attackDir === 'down') cy += TILE_SIZE;
+  else if (attackDir === 'left') cx -= TILE_SIZE;
+  else if (attackDir === 'right') cx += TILE_SIZE;
 
   ctx.save();
   ctx.globalAlpha = 0.7;
   ctx.fillStyle = '#fff';
-  // Draw a slash line
-  const cx = atkX + TILE_SIZE / 2;
-  const cy = atkY + TILE_SIZE / 2;
   ctx.translate(cx, cy);
+  
+  // Draw a larger slash line to match the new sweep
   if (attackDir === 'up' || attackDir === 'down') {
-    ctx.fillRect(-TILE_SIZE * 0.4, -3, TILE_SIZE * 0.8, 6);
+    ctx.fillRect(-TILE_SIZE * 1.2, -3, TILE_SIZE * 2.4, 6);
   } else {
-    ctx.fillRect(-3, -TILE_SIZE * 0.4, 6, TILE_SIZE * 0.8);
+    ctx.fillRect(-3, -TILE_SIZE * 1.2, 6, TILE_SIZE * 2.4);
   }
   ctx.restore();
 }
@@ -271,10 +329,10 @@ function drawBorder() {
   const rw = room.pixelWidth || 600;
   const rh = room.pixelHeight || 600;
 
-  const topDoor    = room.entities.find(e => e.type === 'door' && e.edge === 'top');
+  const topDoor = room.entities.find(e => e.type === 'door' && e.edge === 'top');
   const bottomDoor = room.entities.find(e => e.type === 'door' && e.edge === 'bottom');
-  const leftDoor   = room.entities.find(e => e.type === 'door' && e.edge === 'left');
-  const rightDoor  = room.entities.find(e => e.type === 'door' && e.edge === 'right');
+  const leftDoor = room.entities.find(e => e.type === 'door' && e.edge === 'left');
+  const rightDoor = room.entities.find(e => e.type === 'door' && e.edge === 'right');
 
   ctx.strokeStyle = '#fff';
   ctx.lineWidth = 4;
@@ -282,7 +340,7 @@ function drawBorder() {
   // Left
   ctx.beginPath();
   if (leftDoor) {
-    ctx.moveTo(2, 2);              ctx.lineTo(2, leftDoor.y);
+    ctx.moveTo(2, 2); ctx.lineTo(2, leftDoor.y);
     ctx.moveTo(2, leftDoor.y + leftDoor.height); ctx.lineTo(2, rh - 2);
   } else {
     ctx.moveTo(2, 2); ctx.lineTo(2, rh - 2);
@@ -292,7 +350,7 @@ function drawBorder() {
   // Right
   ctx.beginPath();
   if (rightDoor) {
-    ctx.moveTo(rw - 2, 2);              ctx.lineTo(rw - 2, rightDoor.y);
+    ctx.moveTo(rw - 2, 2); ctx.lineTo(rw - 2, rightDoor.y);
     ctx.moveTo(rw - 2, rightDoor.y + rightDoor.height); ctx.lineTo(rw - 2, rh - 2);
   } else {
     ctx.moveTo(rw - 2, 2); ctx.lineTo(rw - 2, rh - 2);
@@ -302,7 +360,7 @@ function drawBorder() {
   // Top
   ctx.beginPath();
   if (topDoor) {
-    ctx.moveTo(2, 2);       ctx.lineTo(topDoor.x, 2);
+    ctx.moveTo(2, 2); ctx.lineTo(topDoor.x, 2);
     ctx.moveTo(topDoor.x + topDoor.width, 2); ctx.lineTo(rw - 2, 2);
   } else {
     ctx.moveTo(2, 2); ctx.lineTo(rw - 2, 2);
@@ -312,7 +370,7 @@ function drawBorder() {
   // Bottom
   ctx.beginPath();
   if (bottomDoor) {
-    ctx.moveTo(2, rh - 2);       ctx.lineTo(bottomDoor.x, rh - 2);
+    ctx.moveTo(2, rh - 2); ctx.lineTo(bottomDoor.x, rh - 2);
     ctx.moveTo(bottomDoor.x + bottomDoor.width, rh - 2); ctx.lineTo(rw - 2, rh - 2);
   } else {
     ctx.moveTo(2, rh - 2); ctx.lineTo(rw - 2, rh - 2);
@@ -489,6 +547,7 @@ function draw() {
   drawDoorIndicators();
   drawRoomElements();
   drawAttackVisual(ctx);
+  if (window.EnemyAI) window.EnemyAI.drawEffects(ctx);
   drawTileGrid();
 
   if (window.showHitboxes) {
@@ -503,6 +562,12 @@ function draw() {
       if (ent.interactionArea) {
         const ia = ent.interactionArea;
         ctx.strokeRect(ia.x, ia.y, ia.width, ia.height);
+      }
+    }
+    ctx.strokeStyle = 'rgba(255, 0, 255, 0.5)';
+    for (const ent of window.Entities) {
+      if (ent.type === 'enemy' && ent.room === window.MapManager.currentRoom && !ent.dead) {
+        ctx.strokeRect(ent.hitbox.x, ent.hitbox.y, ent.hitbox.width, ent.hitbox.height);
       }
     }
     ctx.strokeStyle = 'rgba(255, 255, 0, 0.5)';
@@ -590,6 +655,7 @@ function draw() {
 
 // --- Game Loop ---
 function gameLoop() {
+  pollGamepad();
   FadeOverlay.update();
 
   // --- Game Over state machine ---
@@ -601,7 +667,7 @@ function gameLoop() {
       draw();
       if (elapsed >= GAME_OVER_FREEZE_DURATION) {
         gameOverState = 'fadeout';
-        FadeOverlay.fadeOut(1500, function() {
+        FadeOverlay.fadeOut(1500, function () {
           gameOverState = 'screen';
         });
       }
@@ -636,10 +702,10 @@ function gameLoop() {
 }
 
 // Game Over input handler
-document.addEventListener('keydown', function(e) {
+document.addEventListener('keydown', function (e) {
   if (gameOverState === 'screen' && e.key === 'Enter') {
     gameOverState = 'fadeback';
-    FadeOverlay.fadeOut(1000, function() {
+    FadeOverlay.fadeOut(1000, function () {
       // Reset everything and go back to menu
       gameOverState = 'none';
       if (window.gameMenu) {
@@ -657,7 +723,7 @@ document.addEventListener('keydown', function(e) {
 });
 
 // Weapon attack input handler
-document.addEventListener('keydown', function(e) {
+document.addEventListener('keydown', function (e) {
   if (e.key === 'Shift') {
     // Don't attack if any overlay/menu is open
     if (window.gameMenu && window.gameMenu.state.isActive) return;
@@ -680,6 +746,15 @@ function isTileBlocked(newX, newY) {
   for (const obs of room.obstacles) {
     if (window.isColliding(testHitbox, obs)) return true;
   }
+
+  // Check living enemies in current room
+  const currentRoom = window.MapManager.currentRoom;
+  for (const ent of window.Entities) {
+    if (ent.type !== 'enemy' || ent.dead) continue;
+    if (ent.room !== currentRoom) continue;
+    if (window.isColliding(testHitbox, ent.area)) return true;
+  }
+
   return false;
 }
 
@@ -700,16 +775,16 @@ function update() {
 
   // Block movement when various overlays are open
   const blocked = window.InteractionManager.activeInteraction ||
-                  (window.Inventory && window.Inventory.isOpen) ||
-                  (window.gameMenu && window.gameMenu.showExitConfirm) ||
-                  (window.gameMenu && window.gameMenu.showPauseMenu) ||
-                  (window.DebugMenu && window.DebugMenu.isOpen);
+    (window.Inventory && window.Inventory.isOpen) ||
+    (window.gameMenu && window.gameMenu.showExitConfirm) ||
+    (window.gameMenu && window.gameMenu.showPauseMenu) ||
+    (window.DebugMenu && window.DebugMenu.isOpen);
 
   if (now - lastMoveTime >= moveDelay && !blocked) {
     let dx = 0, dy = 0;
-    let up    = keys['ArrowUp']    || keys['w'] || keys['W'] || keys['Numpad8'] || keys['8'];
-    let down  = keys['ArrowDown']  || keys['s'] || keys['S'] || keys['Numpad2'] || keys['2'];
-    let left  = keys['ArrowLeft']  || keys['a'] || keys['A'] || keys['Numpad4'] || keys['4'];
+    let up = keys['ArrowUp'] || keys['w'] || keys['W'] || keys['Numpad8'] || keys['8'];
+    let down = keys['ArrowDown'] || keys['s'] || keys['S'] || keys['Numpad2'] || keys['2'];
+    let left = keys['ArrowLeft'] || keys['a'] || keys['A'] || keys['Numpad4'] || keys['4'];
     let right = keys['ArrowRight'] || keys['d'] || keys['D'] || keys['Numpad6'] || keys['6'];
 
     if (keys['Numpad7'] || keys['7']) { up = true; left = true; }
@@ -717,9 +792,9 @@ function update() {
     if (keys['Numpad1'] || keys['1']) { down = true; left = true; }
     if (keys['Numpad3'] || keys['3']) { down = true; right = true; }
 
-    if (up)    dy = -1;
-    if (down)  dy = 1;
-    if (left)  dx = -1;
+    if (up) dy = -1;
+    if (down) dy = 1;
+    if (left) dx = -1;
     if (right) dx = 1;
 
     if (dx !== 0 || dy !== 0) {
@@ -740,55 +815,55 @@ function update() {
         const newX = player.x + dx * TILE_SIZE;
         const newY = player.y + dy * TILE_SIZE;
 
-      // Check room bounds with door awareness
-      const centerX = newX + TILE_SIZE / 2;
-      const centerY = newY + TILE_SIZE / 2;
+        // Check room bounds with door awareness
+        const centerX = newX + TILE_SIZE / 2;
+        const centerY = newY + TILE_SIZE / 2;
 
-      const hasTopDoor    = room.doors.some(d => d.edge === 'top'    && !d.locked && centerX >= d.x && centerX <= d.x + d.width);
-      const hasBottomDoor = room.doors.some(d => d.edge === 'bottom' && !d.locked && centerX >= d.x && centerX <= d.x + d.width);
-      const hasLeftDoor   = room.doors.some(d => d.edge === 'left'   && !d.locked && centerY >= d.y && centerY <= d.y + d.height);
-      const hasRightDoor  = room.doors.some(d => d.edge === 'right'  && !d.locked && centerY >= d.y && centerY <= d.y + d.height);
+        const hasTopDoor = room.doors.some(d => d.edge === 'top' && !d.locked && centerX >= d.x && centerX <= d.x + d.width);
+        const hasBottomDoor = room.doors.some(d => d.edge === 'bottom' && !d.locked && centerX >= d.x && centerX <= d.x + d.width);
+        const hasLeftDoor = room.doors.some(d => d.edge === 'left' && !d.locked && centerY >= d.y && centerY <= d.y + d.height);
+        const hasRightDoor = room.doors.some(d => d.edge === 'right' && !d.locked && centerY >= d.y && centerY <= d.y + d.height);
 
-      const minX = hasLeftDoor   ? -TILE_SIZE : 0;
-      const maxX = hasRightDoor  ? rw : rw - TILE_SIZE;
-      const minY = hasTopDoor    ? -TILE_SIZE : 0;
-      const maxY = hasBottomDoor ? rh : rh - TILE_SIZE;
+        const minX = hasLeftDoor ? -TILE_SIZE : 0;
+        const maxX = hasRightDoor ? rw : rw - TILE_SIZE;
+        const minY = hasTopDoor ? -TILE_SIZE : 0;
+        const maxY = hasBottomDoor ? rh : rh - TILE_SIZE;
 
-      // Try diagonal first, then fall back to single-axis
-      let moved = false;
+        // Try diagonal first, then fall back to single-axis
+        let moved = false;
 
-      if (dx !== 0 && dy !== 0) {
-        // Diagonal: try both axes
-        const diagX = Math.max(minX, Math.min(maxX, newX));
-        const diagY = Math.max(minY, Math.min(maxY, newY));
-        if (!isTileBlocked(diagX, diagY) && diagX === newX && diagY === newY) {
-          player.x = diagX;
-          player.y = diagY;
-          moved = true;
+        if (dx !== 0 && dy !== 0) {
+          // Diagonal: try both axes
+          const diagX = Math.max(minX, Math.min(maxX, newX));
+          const diagY = Math.max(minY, Math.min(maxY, newY));
+          if (!isTileBlocked(diagX, diagY) && diagX === newX && diagY === newY) {
+            player.x = diagX;
+            player.y = diagY;
+            moved = true;
+          } else {
+            // Try X only
+            const xOnly = Math.max(minX, Math.min(maxX, player.x + dx * TILE_SIZE));
+            if (!isTileBlocked(xOnly, player.y) && xOnly !== player.x) {
+              player.x = xOnly;
+              moved = true;
+            }
+            // Try Y only
+            const yOnly = Math.max(minY, Math.min(maxY, player.y + dy * TILE_SIZE));
+            if (!isTileBlocked(player.x, yOnly) && yOnly !== player.y) {
+              player.y = yOnly;
+              moved = true;
+            }
+          }
         } else {
-          // Try X only
-          const xOnly = Math.max(minX, Math.min(maxX, player.x + dx * TILE_SIZE));
-          if (!isTileBlocked(xOnly, player.y) && xOnly !== player.x) {
-            player.x = xOnly;
-            moved = true;
-          }
-          // Try Y only
-          const yOnly = Math.max(minY, Math.min(maxY, player.y + dy * TILE_SIZE));
-          if (!isTileBlocked(player.x, yOnly) && yOnly !== player.y) {
-            player.y = yOnly;
+          // Single axis
+          const clampedX = Math.max(minX, Math.min(maxX, newX));
+          const clampedY = Math.max(minY, Math.min(maxY, newY));
+          if (!isTileBlocked(clampedX, clampedY)) {
+            player.x = clampedX;
+            player.y = clampedY;
             moved = true;
           }
         }
-      } else {
-        // Single axis
-        const clampedX = Math.max(minX, Math.min(maxX, newX));
-        const clampedY = Math.max(minY, Math.min(maxY, newY));
-        if (!isTileBlocked(clampedX, clampedY)) {
-          player.x = clampedX;
-          player.y = clampedY;
-          moved = true;
-        }
-      }
         if (moved) {
           lastMoveTime = now;
           if (window.AudioManager) window.AudioManager.playWalkSound();
@@ -808,6 +883,9 @@ function update() {
     window.animFrame = 1 - window.animFrame;
     window.animTimer = now;
   }
+
+  // Enemy AI
+  if (window.EnemyAI) window.EnemyAI.update();
 
   window.MapManager.checkDoors(player);
 }

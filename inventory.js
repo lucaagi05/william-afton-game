@@ -29,7 +29,7 @@ const INVENTORY_ITEMS = {
   },
   knife: {
     id: 'knife', name: 'Knife', category: 'weapon',
-    description: "A small kitchen knife. 1 tile range. Press Shift to attack.",
+    description: "A small kitchen knife. 1 tile range. Press Backspace to attack.",
     stackable: false,
     damage: 1
   }
@@ -48,7 +48,9 @@ const ITEMS_PER_PAGE = 6;
 let showingActions = false;
 let actionIndex = 0; // 0=USE, 1=DROP, 2=EXIT
 const ACTIONS_CONSUMABLE = ['USE', 'DROP', 'EXIT'];
-const ACTIONS_WEAPON = ['EQUIP', 'EXIT'];
+function getWeaponActions(itemId) {
+  return equippedWeapon === itemId ? ['UNEQUIP', 'EXIT'] : ['EQUIP', 'EXIT'];
+}
 
 // Equipped weapon
 let equippedWeapon = null;
@@ -80,7 +82,7 @@ function getCurrentActions() {
   if (!entry) return ACTIONS_CONSUMABLE;
   const item = INVENTORY_ITEMS[entry.id];
   if (!item) return ACTIONS_CONSUMABLE;
-  if (item.category === 'weapon') return ACTIONS_WEAPON;
+  if (item.category === 'weapon') return getWeaponActions(entry.id);
   if (item.category === 'consumable') return ACTIONS_CONSUMABLE;
   return [];
 }
@@ -238,7 +240,7 @@ function drawInventory(ctx) {
 
   // Controls hint
   ctx.textAlign = 'left';
-  ctx.fillText('Tab:switch | Shift:page | I:close', boxX + 15, boxY + boxH - 10);
+  ctx.fillText('Tab:switch | BkSp:page | I:close', boxX + 15, boxY + boxH - 10);
 
   ctx.restore();
 }
@@ -379,7 +381,8 @@ document.addEventListener('keydown', function (e) {
   }
 
   // Shift: page forward (only when NOT showing actions to avoid conflict with weapon attack)
-  if (e.key === 'Shift' && !showingActions) {
+  if (e.key === 'Backspace' && !showingActions) {
+    e.preventDefault();
     const totalPages = getTotalPages();
     if (totalPages > 1) {
       if (window.AudioManager) window.AudioManager.playMenuNavSound();
@@ -436,7 +439,7 @@ document.addEventListener('keydown', function (e) {
         if (equippedWeapon === entry.id) equippedWeapon = null;
         showingActions = false;
         inventoryShowingDesc = false;
-      } else if (selectedAction === 'EQUIP') {
+      } else if (selectedAction === 'EQUIP' || selectedAction === 'UNEQUIP') {
         // Toggle equip
         if (equippedWeapon === entry.id) {
           equippedWeapon = null; // Unequip

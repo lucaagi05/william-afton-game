@@ -17,6 +17,13 @@ resizeCanvas();
 const player = { x: 3 * TILE_SIZE, y: 2 * TILE_SIZE, visualX: 3 * TILE_SIZE, visualY: 2 * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE, color: '#fff', speed: TILE_SIZE };
 window.player = player;
 
+// Death screen video (reuses same static mp4 as menu)
+const deathVideo = document.createElement('video');
+deathVideo.src = 'mp4/menu_static.mp4';
+deathVideo.muted = true;
+deathVideo.loop = true;
+deathVideo.preload = 'auto';
+
 const keys = {};
 const BASE_MOVE_DELAY = 180;
 let lastMoveTime = 0;
@@ -29,8 +36,8 @@ const playerHitbox = { x: player.x, y: player.y, width: TILE_SIZE, height: TILE_
 window.playerHitbox = playerHitbox;
 
 // --- Global Key State Tracking ---
-document.addEventListener('keydown', e => keys[e.key] = true);
-document.addEventListener('keyup', e => keys[e.key] = false);
+document.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+document.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
 // --- Gamepad State Tracking ---
 let lastGamepadKeys = {};
@@ -48,19 +55,19 @@ function pollGamepad() {
     'ArrowLeft': isPressed(14) || axisPressed(0, -1),
     'ArrowRight': isPressed(15) || axisPressed(0, 1),
     'Enter': isPressed(0), // A: confirm
-    'Shift': isPressed(2), // X: attack
-    ' ': isPressed(4) || gp.axes[2] > 0.1 || gp.axes[5] > 0.1, // LT(Axis) / LB: run
+    'backspace': isPressed(2), // X: attack
+    'shift': isPressed(4) || gp.axes[2] > 0.1 || gp.axes[5] > 0.1, // LT(Axis) / LB: run
     'i': isPressed(7) || isPressed(9), // Menu (button 7 or 9): inventory
-    'Escape': isPressed(6) || isPressed(8) // button 6 or 8: exit / pause game
+    'escape': isPressed(6) || isPressed(8) // button 6 or 8: exit / pause game
   };
 
   for (const key in states) {
     if (states[key] && !lastGamepadKeys[key]) {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: key }));
-      keys[key] = true;
+      keys[key.toLowerCase()] = true;
     } else if (!states[key] && lastGamepadKeys[key]) {
       document.dispatchEvent(new KeyboardEvent('keyup', { key: key }));
-      keys[key] = false;
+      keys[key.toLowerCase()] = false;
     }
   }
 
@@ -163,13 +170,24 @@ function startGameOver() {
   gameOverStartTime = Date.now();
   if (window.AudioManager) window.AudioManager.playPlayerDeathSound();
   if (window.AudioManager) window.AudioManager.stopMusic();
+  // Start death screen video
+  deathVideo.currentTime = 0;
+  deathVideo.play().catch(() => {});
 }
 
 function drawGameOverScreen(ctx) {
   const cw = ctx.canvas.width;
   const ch = ctx.canvas.height;
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, cw, ch);
+
+  // Draw static video background (same as menu)
+  if (deathVideo && deathVideo.readyState >= 2) {
+    ctx.drawImage(deathVideo, 0, 0, cw, ch);
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(0, 0, cw, ch);
+  } else {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, cw, ch);
+  }
 
   ctx.save();
   ctx.font = '64px monospace';
@@ -632,11 +650,6 @@ function draw() {
     window.gameMenu.drawExitConfirm(ctx);
   }
 
-  // Debug menu overlay (canvas-global)
-  if (window.DebugMenu && window.DebugMenu.isOpen) {
-    window.DebugMenu.draw(ctx);
-  }
-
   // Scanlines (full canvas)
   ctx.save();
   ctx.strokeStyle = '#000';
@@ -648,6 +661,11 @@ function draw() {
     ctx.stroke();
   }
   ctx.restore();
+
+  // Debug menu overlay (canvas-global)
+  if (window.DebugMenu && window.DebugMenu.isOpen) {
+    window.DebugMenu.draw(ctx);
+  }
 
   // Fade overlay (very last thing drawn)
   FadeOverlay.draw(ctx);
@@ -708,6 +726,7 @@ document.addEventListener('keydown', function (e) {
     FadeOverlay.fadeOut(1000, function () {
       // Reset everything and go back to menu
       gameOverState = 'none';
+      deathVideo.pause();
       if (window.gameMenu) {
         window.gameMenu.resetGameState();
         window.gameMenu.state.isActive = true;
@@ -724,7 +743,8 @@ document.addEventListener('keydown', function (e) {
 
 // Weapon attack input handler
 document.addEventListener('keydown', function (e) {
-  if (e.key === 'Shift') {
+  if (e.key === 'Backspace') {
+    e.preventDefault();
     // Don't attack if any overlay/menu is open
     if (window.gameMenu && window.gameMenu.state.isActive) return;
     if (window.gameMenu && window.gameMenu.showExitConfirm) return;
@@ -770,7 +790,7 @@ function update() {
   player.visualY += (player.y - player.visualY) * 0.3;
 
   // Sprint (only when not attacking with Shift)
-  const sprinting = keys[' '];
+  const sprinting = keys['shift'];
   const moveDelay = sprinting ? BASE_MOVE_DELAY / 2 : BASE_MOVE_DELAY;
 
   // Block movement when various overlays are open
@@ -782,15 +802,15 @@ function update() {
 
   if (now - lastMoveTime >= moveDelay && !blocked) {
     let dx = 0, dy = 0;
-    let up = keys['ArrowUp'] || keys['w'] || keys['W'] || keys['Numpad8'] || keys['8'];
-    let down = keys['ArrowDown'] || keys['s'] || keys['S'] || keys['Numpad2'] || keys['2'];
-    let left = keys['ArrowLeft'] || keys['a'] || keys['A'] || keys['Numpad4'] || keys['4'];
-    let right = keys['ArrowRight'] || keys['d'] || keys['D'] || keys['Numpad6'] || keys['6'];
+    let up = keys['arrowup'] || keys['w'] || keys['numpad8'] || keys['8'];
+    let down = keys['arrowdown'] || keys['s'] || keys['numpad2'] || keys['2'];
+    let left = keys['arrowleft'] || keys['a'] || keys['numpad4'] || keys['4'];
+    let right = keys['arrowright'] || keys['d'] || keys['numpad6'] || keys['6'];
 
-    if (keys['Numpad7'] || keys['7']) { up = true; left = true; }
-    if (keys['Numpad9'] || keys['9']) { up = true; right = true; }
-    if (keys['Numpad1'] || keys['1']) { down = true; left = true; }
-    if (keys['Numpad3'] || keys['3']) { down = true; right = true; }
+    if (keys['numpad7'] || keys['7']) { up = true; left = true; }
+    if (keys['numpad9'] || keys['9']) { up = true; right = true; }
+    if (keys['numpad1'] || keys['1']) { down = true; left = true; }
+    if (keys['numpad3'] || keys['3']) { down = true; right = true; }
 
     if (up) dy = -1;
     if (down) dy = 1;

@@ -12,6 +12,9 @@
   let editMode = 'position';
   let entityEditorActive = false;
 
+  // Snapshot tracking for export feature — stores original values keyed by entity id
+  const entitySnapshots = {};
+
   const MENU_OPTIONS = [
     'Reload Game',
     'Hard Save',
@@ -52,7 +55,7 @@
     }
 
     const panelW = 350;
-    const panelH = debugSubMenu ? 600 : 440;
+    const panelH = 440;
     const px = 30;
     const py = (ch - panelH) / 2;
 
@@ -78,6 +81,13 @@
       const ents = getEntityList();
       const names = ents.map(e => `${e.id} (${e.room})`);
       drawSubMenu(ctx, px, py + 55, panelW, 'Select Entity', names);
+
+      // Fixed button at the bottom
+      const bottomY = py + 395;
+      ctx.font = '14px monospace';
+      const isSelected = debugSubSelected === ents.length;
+      ctx.fillStyle = isSelected ? '#0ff' : '#0f0';
+      ctx.fillText(isSelected ? '> EXPORT CHANGES' : '  EXPORT CHANGES', px + 15, bottomY);
     } else {
       ctx.font = '15px monospace';
       const startY = py + 55;
@@ -115,7 +125,8 @@
 
     ctx.font = '13px monospace';
     const maxVisible = 10;
-    const scrollOffset = Math.max(0, debugSubSelected - maxVisible + 1);
+    const listSelected = Math.min(debugSubSelected, items.length - 1);
+    const scrollOffset = Math.max(0, listSelected - maxVisible + 1);
     for (let i = scrollOffset; i < Math.min(items.length, scrollOffset + maxVisible); i++) {
       const y = startY + 25 + (i - scrollOffset) * 24;
       ctx.fillStyle = i === debugSubSelected ? '#0ff' : '#aaa';
@@ -265,6 +276,7 @@
     } else if (e.key === 'Escape') {
       debugOpen = false;
       debugSubMenu = null;
+      e.stopImmediatePropagation();
     }
   });
 
@@ -284,12 +296,18 @@
       }
     } else if (debugSubMenu === 'entities') {
       const ents = getEntityList();
+      const itemCount = ents.length + 1; // +1 for "Export Changes"
+      
       if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
-        debugSubSelected = (debugSubSelected - 1 + ents.length) % ents.length;
+        debugSubSelected = (debugSubSelected - 1 + itemCount) % itemCount;
       } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
-        debugSubSelected = (debugSubSelected + 1) % ents.length;
+        debugSubSelected = (debugSubSelected + 1) % itemCount;
       } else if (e.key === 'Enter') {
-        startEntityEdit(ents[debugSubSelected]);
+        if (debugSubSelected === ents.length) {
+          exportEntityChanges();
+        } else {
+          startEntityEdit(ents[debugSubSelected]);
+        }
       } else if (e.key === 'Escape') {
         debugSubMenu = null;
       }
@@ -309,6 +327,7 @@
       editingEntity = null;
       editMode = 'position';
       debugSubMenu = null;
+      e.stopImmediatePropagation();
       return;
     }
 
@@ -317,6 +336,7 @@
       editingEntity = null;
       editMode = 'position';
       debugSubMenu = null;
+      e.stopImmediatePropagation();
       return;
     }
 
@@ -461,12 +481,136 @@
   }
 
   function startEntityEdit(ent) {
+    // Take snapshot of original values if not already tracked
+    if (!entitySnapshots[ent.id]) {
+      const snap = {};
+      if (ent.area) snap.area = { x: ent.area.x, y: ent.area.y, width: ent.area.width, height: ent.area.height };
+      if (ent.hitbox) snap.hitbox = { x: ent.hitbox.x, y: ent.hitbox.y, width: ent.hitbox.width, height: ent.hitbox.height };
+      if (ent.interactionArea) snap.interactionArea = { x: ent.interactionArea.x, y: ent.interactionArea.y, width: ent.interactionArea.width, height: ent.interactionArea.height };
+      entitySnapshots[ent.id] = snap;
+    }
     editingEntity = ent;
     editMode = 'position';
     entityEditorActive = true;
     if (window.MapManager && ent.room) {
       window.MapManager.currentRoom = ent.room;
     }
+  }
+
+  // --- Export entity changes ---
+  function exportEntityChanges() {
+    const allEnts = window.Entities || [];
+    const lines = [];
+    lines.push('// ============================================');
+    lines.push('// Entity Position Changes Export');
+    lines.push('// Generated: ' + new Date().toISOString());
+    lines.push('// File: entities.js');
+    lines.push('// ============================================');
+    lines.push('');
+
+    let hasChanges = false;
+
+    for (const entId in entitySnapshots) {
+      const snap = entitySnapshots[entId];
+      const ent = allEnts.find(e => e.id === entId);
+      if (!ent) continue;
+
+      const diffs = [];
+
+      // Compare area
+      if (snap.area && ent.area) {
+        for (const prop of ['x', 'y', 'width', 'height']) {
+          if (snap.area[prop] !== ent.area[prop]) {
+            diffs.push({ path: 'area.' + prop, old: snap.area[prop], now: ent.area[prop] });
+          }
+        }
+      }
+
+      // Compare hitbox
+      if (snap.hitbox && ent.hitbox) {
+        for (const prop of ['x', 'y', 'width', 'height']) {
+          if (snap.hitbox[prop] !== ent.hitbox[prop]) {
+            diffs.push({ path: 'hitbox.' + prop, old: snap.hitbox[prop], now: ent.hitbox[prop] });
+          }
+        }
+      }
+
+      // Compare interactionArea
+      if (snap.interactionArea && ent.interactionArea) {
+        for (const prop of ['x', 'y', 'width', 'height']) {
+          if (snap.interactionArea[prop] !== ent.interactionArea[prop]) {
+            diffs.push({ path: 'interactionArea.' + prop, old: snap.interactionArea[prop], now: ent.interactionArea[prop] });
+          }
+        }
+      }
+
+      if (diffs.length === 0) continue;
+      hasChanges = true;
+
+      // Find approximate line number in entities.js
+      let lineHint = '(unknown)';
+      const entitiesSrc = window._entitiesSource;
+      if (!entitiesSrc) {
+        // Try to find line from Entities array index
+        const idx = allEnts.indexOf(ent);
+        lineHint = 'entity index ' + idx;
+      }
+
+      lines.push('// --- Entity: ' + ent.id + ' (room: ' + ent.room + ') ---');
+      lines.push('// File: entities.js, search for id: \'' + ent.id + '\'');
+      lines.push('//');
+
+      for (const d of diffs) {
+        const oldTile = Math.floor(d.old / TILE_SIZE);
+        const newTile = Math.floor(d.now / TILE_SIZE);
+        lines.push('//   ' + d.path + ': ' + d.old + ' → ' + d.now +
+          (d.path.endsWith('.x') || d.path.endsWith('.y')
+            ? '  (tile ' + oldTile + ' → ' + newTile + ')'
+            : '  (tiles: ' + oldTile + ' → ' + newTile + ')'));
+      }
+
+      // Output the entity's new values as code
+      lines.push('');
+      if (ent.area) {
+        const tx = Math.round(ent.area.x / TILE_SIZE);
+        const ty = Math.round(ent.area.y / TILE_SIZE);
+        const tw = Math.round(ent.area.width / TILE_SIZE);
+        const th = Math.round(ent.area.height / TILE_SIZE);
+        lines.push('// New area value:');
+        lines.push('area: { x: ' + tx + ' * TILE_SIZE, y: ' + ty + ' * TILE_SIZE, width: ' + (tw === 1 ? 'TILE_SIZE' : tw + ' * TILE_SIZE') + ', height: ' + (th === 1 ? 'TILE_SIZE' : th + ' * TILE_SIZE') + ' },');
+      }
+      if (ent.hitbox) {
+        const tx = Math.round(ent.hitbox.x / TILE_SIZE);
+        const ty = Math.round(ent.hitbox.y / TILE_SIZE);
+        const tw = Math.round(ent.hitbox.width / TILE_SIZE);
+        const th = Math.round(ent.hitbox.height / TILE_SIZE);
+        lines.push('// New hitbox value:');
+        lines.push('hitbox: { x: ' + tx + ' * TILE_SIZE, y: ' + ty + ' * TILE_SIZE, width: ' + (tw === 1 ? 'TILE_SIZE' : tw + ' * TILE_SIZE') + ', height: ' + (th === 1 ? 'TILE_SIZE' : th + ' * TILE_SIZE') + ' },');
+      }
+      if (ent.interactionArea) {
+        const tx = Math.round(ent.interactionArea.x / TILE_SIZE);
+        const ty = Math.round(ent.interactionArea.y / TILE_SIZE);
+        const tw = Math.round(ent.interactionArea.width / TILE_SIZE);
+        const th = Math.round(ent.interactionArea.height / TILE_SIZE);
+        lines.push('// New interactionArea value:');
+        lines.push('interactionArea: { x: ' + tx + ' * TILE_SIZE, y: ' + ty + ' * TILE_SIZE, width: ' + (tw === 1 ? 'TILE_SIZE' : tw + ' * TILE_SIZE') + ', height: ' + (th === 1 ? 'TILE_SIZE' : th + ' * TILE_SIZE') + ' },');
+      }
+      lines.push('');
+    }
+
+    if (!hasChanges) {
+      lines.push('// No changes detected. Edit entities with arrow keys first.');
+    }
+
+    const content = lines.join('\n');
+    const blob = new Blob([content], { type: 'application/javascript' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'entity_changes_' + Date.now() + '.js';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
   }
 
   window.DebugMenu = {

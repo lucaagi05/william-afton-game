@@ -15,11 +15,20 @@ function parseAudioTime(value) {
 }
 
 // ---------------------------------------------------------------------------
+// Pitch conversion
+// 100 = normal, <100 = lower pitch, >100 = higher pitch
+// Internally maps to playbackRate: pitch / 100
+// ---------------------------------------------------------------------------
+function pitchToRate(pitch) {
+  return (pitch !== undefined ? pitch : 100) / 100;
+}
+
+// ---------------------------------------------------------------------------
 // Track Definitions
 // Add or edit tracks here. Fields:
 //   src    — path to audio file
 //   volume — 0.0 to 1.0
-//   pitch  — playbackRate (1.0 = normal; affects speed AND pitch)
+//   pitch  — 100 = normal; <100 = lower pitch, >100 = higher pitch
 //   start  — 0 = from beginning, or "Min:Sec:Ms"
 //   end    — -1 = play full song, or "Min:Sec:Ms" to cut early
 //   loop   — true to loop
@@ -28,7 +37,7 @@ const TRACKS = {
   menu: {
     src: 'audio/menu_theme.mp3',   // ← add your menu theme file here
     volume: 0.75,
-    pitch: 1.0,
+    pitch: 100,
     start: 0,
     end: -1,
     loop: true
@@ -36,7 +45,7 @@ const TRACKS = {
   ingame: {
     src: 'audio/partytime.mp3',
     volume: 1.0,
-    pitch: 1.0,
+    pitch: 100,
     start: 0,
     end: -1,
     loop: true
@@ -44,7 +53,7 @@ const TRACKS = {
   garden: {
     src: 'audio/partytime.mp3',
     volume: 0.8,
-    pitch: 1.0,
+    pitch: 100,
     start: 0,
     end: -1,
     loop: true
@@ -54,42 +63,46 @@ const TRACKS = {
 
 // ---------------------------------------------------------------------------
 // SFX Registry
-// Fields: src, volume, pitch (playbackRate)
+// Fields: src, volume, pitch (100 = normal, <100 = lower, >100 = higher)
 // ---------------------------------------------------------------------------
 const SFX = {
   textbox: {
     src: 'audio/skiptext.wav',
     volume: 0.8,
-    pitch: 1.0
+    pitch: 100
   },
   door: {
     src: 'audio/door_enter.wav',
     volume: 1.0,
-    pitch: 1.0
+    pitch: 100
   },
   heal: {
     src: 'audio/recover_health.wav',
     volume: 1.0,
-    pitch: 1.0
+    pitch: 100
   },
   damage: {
     src: 'audio/take_dmg.wav',
     volume: 1.0,
-    pitch: 1.0
+    randomPitch: true,
+    pitchRange: [80, 120]
   },
-  menu_nav: { src: 'audio/menu_nav.wav', volume: 1.0, pitch: 1.0 },
-  menu_select: { src: 'audio/menu_select.wav', volume: 1.0, pitch: 1.0 },
-  menu_enter: { src: 'audio/menu_select.wav', volume: 1.0, pitch: 1.0 },
-  locked_door: { src: 'audio/door_closed.wav', volume: 1.0, pitch: 1.0 },
-  unlock_door: { src: 'audio/unlock_door.wav', volume: 1.0, pitch: 1.0 },
-  save_game: { src: 'audio/save_game.wav', volume: 1.0, pitch: 1.0 },
-  item_pickup: { src: 'audio/item_pickup.wav', volume: 1.0, pitch: 1.0 },
-  walk: { src: 'audio/player_step.wav', volume: 1.0, pitch: 1.0 },
-  start_game: { src: 'audio/start_load_fade.wav', volume: 1.0, pitch: 1.0 },
-  player_death: { src: 'audio/player_death.wav', volume: 1.0, pitch: 1.0 },
-  knife_use: { src: 'audio/knife_use.wav', volume: 1.0, pitch: 1.0 },
-  hit_enemy: { src: 'audio/hit_enemy.wav', volume: 1.0, pitch: 1.0 },
-  entity_death: { src: 'audio/entity_death.wav', volume: 1.0, pitch: 1.0 }
+  menu_nav: { src: 'audio/menu_nav.wav', volume: 1.0, pitch: 100 },
+  menu_select: { src: 'audio/menu_select.wav', volume: 1.0, pitch: 100 },
+  menu_enter: { src: 'audio/menu_select.wav', volume: 1.0, pitch: 100 },
+  locked_door: { src: 'audio/door_locked.wav', volume: 1.0, pitch: 100 },
+  unlock_door: { src: 'audio/unlock_door.wav', volume: 1.0, pitch: 100 },
+  save_game: { src: 'audio/save_game.wav', volume: 1.0, pitch: 100 },
+  item_pickup: { src: 'audio/item_pickup.wav', volume: 1.0, pitch: 100 },
+  walk: [
+    { src: 'audio/player_step.wav', volume: 1.0, pitch: 800 },
+    { src: 'audio/player_step.wav', volume: 1.0, pitch: 50 }
+  ],
+  start_game: { src: 'audio/start_load_fade.wav', volume: 1.0, pitch: 100 },
+  player_death: { src: 'audio/player_death.wav', volume: 1.0, pitch: 100 },
+  knife_use: { src: 'audio/knife_use.wav', volume: 1.0, pitch: 100 },
+  hit_enemy: { src: 'audio/hit_enemy.wav', volume: 1.0, pitch: 100 },
+  entity_death: { src: 'audio/entity_death.wav', volume: 1.0, pitch: 100 }
 };
 
 // ---------------------------------------------------------------------------
@@ -125,7 +138,7 @@ window.AudioManager = {
 
     const audio = new Audio(cfg.src);
     audio.volume = cfg.volume;
-    audio.playbackRate = cfg.pitch;
+    audio.playbackRate = pitchToRate(cfg.pitch);
     audio.currentTime = startSec;
 
     if (endSec === -1) {
@@ -170,11 +183,29 @@ window.AudioManager = {
   stopMusic() { this._stop(); },
 
   playSFX(key) {
-    const cfg = SFX[key];
-    if (!cfg) return;
+    let cfgInit = SFX[key];
+    if (!cfgInit) return;
+
+    let cfg = cfgInit;
+    // Sequential fallback for array-based configs (double audios)
+    if (Array.isArray(cfgInit)) {
+      if (typeof cfgInit._index === 'undefined') cfgInit._index = 0;
+      cfg = cfgInit[cfgInit._index];
+      cfgInit._index = (cfgInit._index + 1) % cfgInit.length;
+    }
+
     const sfx = new Audio(cfg.src);
     sfx.volume = cfg.volume;
-    sfx.playbackRate = cfg.pitch;
+
+    // Process random pitch if enabled
+    if (cfg.randomPitch && cfg.pitchRange && cfg.pitchRange.length === 2) {
+      const min = cfg.pitchRange[0];
+      const max = cfg.pitchRange[1];
+      sfx.playbackRate = pitchToRate(min + Math.random() * (max - min));
+    } else {
+      sfx.playbackRate = pitchToRate(cfg.pitch);
+    }
+
     sfx.play().catch(e => console.warn('SFX:', e));
   },
 

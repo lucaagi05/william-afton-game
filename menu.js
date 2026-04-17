@@ -244,8 +244,8 @@ function drawControlsPopup(ctx) {
 
   const controls = [
     ['WASD / Arrows', 'Move'],
-    ['Space',         'Run'],
-    ['Shift',         'Attack (weapon)'],
+    ['Shift',         'Run'],
+    ['Backspace',     'Attack (weapon)'],
     ['Enter',         'Interact'],
     ['I',             'Inventory'],
     ['Tab',           'Switch Inv. Tab'],

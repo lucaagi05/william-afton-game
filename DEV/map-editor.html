@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Ultimate Grid Editor & Viewer</title>
+    <style>
+        :root {
+            --bg: #1a1b26;
+            --panel: #24283b;
+            --accent: #7aa2f7;
+            --success: #9ece6a;
+            --text: #cfc9c2;
+            --border: #414868;
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+
+        .container { width: 95%; max-width: 1200px; }
+
+        .toolbar {
+            background: var(--panel);
+            padding: 20px;
+            border-radius: 12px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-bottom: 20px;
+            border: 1px solid var(--border);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+
+        .section {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 0 15px;
+            border-right: 1px solid var(--border);
+        }
+        .section:last-child { border-right: none; }
+
+        textarea {
+            width: 100%;
+            height: 80px;
+            background: #16161e;
+            color: var(--success);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px;
+            font-family: 'Consolas', monospace;
+            margin-bottom: 15px;
+            resize: vertical;
+        }
+
+        input[type="number"] {
+            width: 50px;
+            background: #16161e;
+            border: 1px solid var(--accent);
+            color: white;
+            padding: 5px;
+            border-radius: 4px;
+        }
+
+        .char-btn {
+            width: 35px;
+            height: 35px;
+            cursor: pointer;
+            border: 1px solid var(--border);
+            background: #16161e;
+            color: var(--accent);
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+        }
+
+        .char-btn.active {
+            background: var(--accent);
+            color: var(--bg);
+            box-shadow: 0 0 10px var(--accent);
+        }
+
+        button {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .btn-blue { background: var(--accent); color: var(--bg); }
+        .btn-green { background: var(--success); color: var(--bg); }
+        .btn-outline { background: transparent; border: 1px solid var(--text); color: var(--text); }
+        button:hover { opacity: 0.8; transform: translateY(-1px); }
+
+        #grid-container {
+            display: grid;
+            gap: 1px;
+            background-color: var(--border);
+            border: 2px solid var(--border);
+            margin: 0 auto;
+            cursor: crosshair;
+            user-select: none;
+            overflow: auto;
+            max-height: 70vh;
+        }
+
+        .cell {
+            width: 25px;
+            height: 25px;
+            background-color: #1a1b26;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Consolas', monospace;
+            font-size: 13px;
+        }
+
+        .cell[data-char="X"] { color: #f7768e; }
+        .cell[data-char="0"] { color: #565f89; }
+        .cell[data-char="="] { color: #e0af68; }
+        
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            background: var(--success);
+            color: var(--bg);
+            padding: 10px 20px;
+            border-radius: 20px;
+            display: none;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Grid Master: View, Edit & Export</h2>
+
+    <textarea id="io-text" placeholder="Incolla qui il testo del file .txt per caricarlo o visualizzarlo..."></textarea>
+
+    <div class="toolbar">
+        <div class="section">
+            <button class="btn-blue" onclick="loadFromText()">Visualizza/Carica</button>
+        </div>
+
+        <div class="section">
+            <input type="number" id="cols" value="30" title="Colonne">
+            <span>x</span>
+            <input type="number" id="rows" value="20" title="Righe">
+            <button class="btn-outline" onclick="initGrid()">Nuova Vuota</button>
+        </div>
+
+        <div class="section" id="palette">
+            <div class="char-btn active" onclick="setBrush('0', this)">0</div>
+            <div class="char-btn" onclick="setBrush('X', this)">X</div>
+            <div class="char-btn" onclick="setBrush('=', this)">=</div>
+            <div class="char-btn" onclick="setBrush('1', this)">1</div>
+            <div class="char-btn" onclick="setBrush('2', this)">2</div>
+        </div>
+
+        <div class="section">
+            <button class="btn-green" onclick="exportFile()">Salva .TXT</button>
+            <button class="btn-green" onclick="copyClipboard()">Copia Testo</button>
+        </div>
+    </div>
+
+    <div id="grid-container"></div>
+</div>
+
+<div id="toast" class="toast">Copiato negli appunti!</div>
+
+<script>
+    let currentBrush = '0';
+    let isDrawing = false;
+
+    // Inizializzazione
+    window.onload = initGrid;
+    window.onmouseup = () => isDrawing = false;
+
+    function setBrush(char, el) {
+        currentBrush = char;
+        document.querySelectorAll('.char-btn').forEach(b => b.classList.remove('active'));
+        el.classList.add('active');
+    }
+
+    // Funzione 1: Crea griglia vuota
+    function initGrid() {
+        const r = document.getElementById('rows').value;
+        const c = document.getElementById('cols').value;
+        buildGrid(r, c);
+    }
+
+    // Funzione 2: Carica da testo incollato (Visualizzatore)
+    function loadFromText() {
+        const text = document.getElementById('io-text').value.trim();
+        if (!text) return alert("Incolla del testo prima!");
+
+        const lines = text.split(/\r?\n/);
+        const r = lines.length;
+        const c = lines[0].length;
+
+        document.getElementById('rows').value = r;
+        document.getElementById('cols').value = c;
+
+        buildGrid(r, c, lines);
+    }
+
+    // Costruttore della griglia
+    function buildGrid(rows, cols, data = null) {
+        const container = document.getElementById('grid-container');
+        container.innerHTML = '';
+        container.style.gridTemplateColumns = `repeat(${cols}, 25px)`;
+
+        for (let i = 0; i < rows; i++) {
+            for (let j = 0; j < cols; j++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                
+                // Se ci sono dati, riempi, altrimenti metti '0'
+                const char = (data && data[i] && data[i][j]) ? data[i][j] : '0';
+                cell.textContent = char;
+                cell.setAttribute('data-char', char);
+
+                cell.onmousedown = (e) => { isDrawing = true; paint(cell); };
+                cell.onmouseenter = () => { if(isDrawing) paint(cell); };
+                container.appendChild(cell);
+            }
+        }
+    }
+
+    function paint(cell) {
+        cell.textContent = currentBrush;
+        cell.setAttribute('data-char', currentBrush);
+    }
+
+    // Ottiene il testo attuale dalla griglia
+    function getGridText() {
+        const rows = document.getElementById('rows').value;
+        const cols = document.getElementById('cols').value;
+        const cells = document.querySelectorAll('.cell');
+        let content = "";
+        cells.forEach((cell, index) => {
+            content += cell.textContent;
+            if ((index + 1) % cols === 0) content += "\r\n";
+        });
+        return content;
+    }
+
+    function exportFile() {
+        const blob = new Blob([getGridText()], { type: 'text/plain' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'mappa_export.txt';
+        link.click();
+    }
+
+    function copyClipboard() {
+        const text = getGridText();
+        navigator.clipboard.writeText(text).then(() => {
+            const toast = document.getElementById('toast');
+            toast.style.display = 'block';
+            setTimeout(() => toast.style.display = 'none', 2000);
+        });
+    }
+</script>
+
+</body>
+</html>

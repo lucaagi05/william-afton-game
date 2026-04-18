@@ -130,7 +130,13 @@ function syncCollectedFlags() {
     'key_item': 'key',
     'candy_item': 'candy',
     'candy_item_garden': 'candy',
-    'knife_item': 'knife'
+    'knife_item': 'knife',
+    'pie_item': 'pie',
+    'cake_item': 'cake',
+    'medicine_item': 'medicine',
+    'vitamins_item': 'vitamins',
+    'drugs_item': 'drugs',
+    'mask_item': 'mask'
   };
   for (const ent of window.Entities) {
     if (ent.type === 'item' && itemMap[ent.id] !== undefined) {
@@ -211,8 +217,14 @@ function resetGameState() {
       }
     }
   }
-  const gardenDoor = window.Entities && window.Entities.find(e => e.id === 'door_to_garden');
-  if (gardenDoor) gardenDoor.locked = true;
+  // Reset all initially-locked doors (driven by CSV IsLocked column)
+  if (window.Entities) {
+    for (const ent of window.Entities) {
+      if (ent.type === 'door' && ent._initiallyLocked) {
+        ent.locked = true;
+      }
+    }
+  }
   if (window.Health) {
     window.Health.currentHP = window.Health.maxHP;
     if (window.Health.resetImmunity) window.Health.resetImmunity();

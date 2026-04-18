@@ -1,0 +1,9 @@
+ID,Name,MapFile,MusicTrack,LinkingDoor,DoorTo,IsLocked,KeyID,WallTheme
+room1,Room 1,maps/room1.txt,ingame,1,room2,,,pizzeria_walls
+room2,Room 2,maps/room2.txt,ingame,1,room1,,,pizzeria_walls
+,,,,2,room3,,,
+room3,Hallway,maps/room3.txt,ingame,1,room2,,,pizzeria_walls
+,,,,2,room4,,,
+room4,Room 4,maps/room4.txt,ingame,1,room3,,,pizzeria_walls
+,,,,2,garden,True,key,
+garden,The Garden,maps/garden.txt,garden,1,room4,,,pizzeria_walls

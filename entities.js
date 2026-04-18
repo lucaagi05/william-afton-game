@@ -58,6 +58,126 @@ window.Entities = [
     }
   },
 
+  {
+    id: 'pie_item',
+    type: 'item',
+    room: 'room1',
+    collected: false,
+    interactionId: 'pie_item',
+    area: { x: 3 * TILE_SIZE, y: 5 * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE },
+    color: '#ffa500',
+    interactionArea: { x: 2 * TILE_SIZE, y: 4 * TILE_SIZE, width: TILE_SIZE * 3, height: TILE_SIZE * 3 },
+    draw(ctx) {
+      if (this.collected) return;
+      ctx.save(); ctx.fillStyle = this.color;
+      const s = TILE_SIZE * 0.5;
+      const ox = this.area.x + (TILE_SIZE - s) / 2;
+      const oy = this.area.y + (TILE_SIZE - s) / 2;
+      ctx.fillRect(ox, oy, s, s);
+      ctx.restore();
+    }
+  },
+
+  {
+    id: 'cake_item',
+    type: 'item',
+    room: 'room1',
+    collected: false,
+    interactionId: 'cake_item',
+    area: { x: 8 * TILE_SIZE, y: 6 * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE },
+    color: '#ff69b4',
+    interactionArea: { x: 7 * TILE_SIZE, y: 5 * TILE_SIZE, width: TILE_SIZE * 3, height: TILE_SIZE * 3 },
+    draw(ctx) {
+      if (this.collected) return;
+      ctx.save(); ctx.fillStyle = this.color;
+      const s = TILE_SIZE * 0.5;
+      const ox = this.area.x + (TILE_SIZE - s) / 2;
+      const oy = this.area.y + (TILE_SIZE - s) / 2;
+      ctx.fillRect(ox, oy, s, s);
+      ctx.restore();
+    }
+  },
+
+  {
+    id: 'medicine_item',
+    type: 'item',
+    room: 'room1',
+    collected: false,
+    interactionId: 'medicine_item',
+    area: { x: 15 * TILE_SIZE, y: 15 * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE },
+    color: '#ffffff',
+    interactionArea: { x: 14 * TILE_SIZE, y: 14 * TILE_SIZE, width: TILE_SIZE * 3, height: TILE_SIZE * 3 },
+    draw(ctx) {
+      if (this.collected) return;
+      ctx.save(); ctx.fillStyle = this.color;
+      const s = TILE_SIZE * 0.5;
+      const ox = this.area.x + (TILE_SIZE - s) / 2;
+      const oy = this.area.y + (TILE_SIZE - s) / 2;
+      ctx.fillRect(ox, oy, s, s);
+      ctx.restore();
+    }
+  },
+
+  {
+    id: 'vitamins_item',
+    type: 'item',
+    room: 'room1',
+    collected: false,
+    interactionId: 'vitamins_item',
+    area: { x: 20 * TILE_SIZE, y: 10 * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE },
+    color: '#ffff00',
+    interactionArea: { x: 19 * TILE_SIZE, y: 9 * TILE_SIZE, width: TILE_SIZE * 3, height: TILE_SIZE * 3 },
+    draw(ctx) {
+      if (this.collected) return;
+      ctx.save(); ctx.fillStyle = this.color;
+      const s = TILE_SIZE * 0.5;
+      const ox = this.area.x + (TILE_SIZE - s) / 2;
+      const oy = this.area.y + (TILE_SIZE - s) / 2;
+      ctx.fillRect(ox, oy, s, s);
+      ctx.restore();
+    }
+  },
+
+  {
+    id: 'drugs_item',
+    type: 'item',
+    room: 'room1',
+    collected: false,
+    interactionId: 'drugs_item',
+    area: { x: 25 * TILE_SIZE, y: 20 * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE },
+    color: '#800080',
+    interactionArea: { x: 24 * TILE_SIZE, y: 19 * TILE_SIZE, width: TILE_SIZE * 3, height: TILE_SIZE * 3 },
+    draw(ctx) {
+      if (this.collected) return;
+      ctx.save(); ctx.fillStyle = this.color;
+      const s = TILE_SIZE * 0.5;
+      const ox = this.area.x + (TILE_SIZE - s) / 2;
+      const oy = this.area.y + (TILE_SIZE - s) / 2;
+      ctx.fillRect(ox, oy, s, s);
+      ctx.restore();
+    }
+  },
+
+  {
+    id: 'mask_item',
+    type: 'item',
+    room: 'room1',
+    collected: false,
+    interactionId: 'mask_item',
+    area: { x: 10 * TILE_SIZE, y: 25 * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE },
+    color: '#696969',
+    interactionArea: { x: 9 * TILE_SIZE, y: 24 * TILE_SIZE, width: TILE_SIZE * 3, height: TILE_SIZE * 3 },
+    draw(ctx) {
+      if (this.collected) return;
+      ctx.save(); ctx.fillStyle = this.color;
+      const s = TILE_SIZE * 0.5;
+      const ox = this.area.x + (TILE_SIZE - s) / 2;
+      const oy = this.area.y + (TILE_SIZE - s) / 2;
+      ctx.fillRect(ox, oy, s, s);
+      ctx.restore();
+    }
+  },
+
   // ==========================================
   // ROOM 2 (12×12 tiles, 600×600)
   // ==========================================
@@ -284,90 +404,7 @@ window.Entities = [
   },
 
   // ==========================================
-  // DOORS
+  // DOORS — auto-generated from CSV + map files
+  // See: data/Locations.csv and maps/*.txt
   // ==========================================
-  // --> HOW TO MOVE DOORS:
-  // When making a room larger/smaller in map.js, doors DO NOT auto-align to the border!
-  // You must update:
-  // 1. The structural x/y property (e.g., `x: 10 * TILE_SIZE`)
-  // 2. The `interactionArea`, ensuring it spatially overlaps where the doorway visual sits.
-  // 3. For the opposite door in the next room, update `spawnX` and `spawnY` so you emerge properly.
-
-  // Room 1 ↔ Room 2 (bottom/top, tiles 5-6)
-  {
-    id: 'door_to_room2',
-    type: 'door', room: 'room1', edge: 'bottom',
-    x: 15 * TILE_SIZE, width: 2 * TILE_SIZE,
-    targetRoom: 'room2', spawnX: 5 * TILE_SIZE, spawnY: 0,
-    interactionArea: { x: 15 * TILE_SIZE, y: 1500, width: 2 * TILE_SIZE, height: TILE_SIZE },
-    draw() { }
-  },
-  {
-    id: 'door_to_room1',
-    type: 'door', room: 'room2', edge: 'top',
-    x: 5 * TILE_SIZE, width: 2 * TILE_SIZE,
-    targetRoom: 'room1', spawnX: 15 * TILE_SIZE, spawnY: 29 * TILE_SIZE,
-    interactionArea: { x: 5 * TILE_SIZE, y: -TILE_SIZE, width: 2 * TILE_SIZE, height: TILE_SIZE },
-    draw() { }
-  },
-
-  // Room 2 → Room 3 (right edge, tiles 5-6)
-  {
-    id: 'door_room2_to_room3',
-    type: 'door', room: 'room2', edge: 'right',
-    y: 5 * TILE_SIZE, height: 2 * TILE_SIZE,
-    targetRoom: 'room3', spawnX: 1 * TILE_SIZE, spawnY: 2 * TILE_SIZE,
-    interactionArea: { x: 600, y: 5 * TILE_SIZE, width: TILE_SIZE, height: 2 * TILE_SIZE },
-    draw() { }
-  },
-  // Room 3 → Room 2 (left edge, tiles 2-3)
-  {
-    id: 'door_room3_to_room2',
-    type: 'door', room: 'room3', edge: 'left',
-    y: 2 * TILE_SIZE, height: 2 * TILE_SIZE,
-    targetRoom: 'room2', spawnX: 10 * TILE_SIZE, spawnY: 5 * TILE_SIZE,
-    interactionArea: { x: -TILE_SIZE, y: 2 * TILE_SIZE, width: TILE_SIZE, height: 2 * TILE_SIZE },
-    draw() { }
-  },
-
-  // Room 3 → Room 4 (right edge, tiles 2-3)
-  {
-    id: 'door_room3_to_room4',
-    type: 'door', room: 'room3', edge: 'right',
-    y: 2 * TILE_SIZE, height: 2 * TILE_SIZE,
-    targetRoom: 'room4', spawnX: 1 * TILE_SIZE, spawnY: 2 * TILE_SIZE,
-    interactionArea: { x: 1000, y: 2 * TILE_SIZE, width: TILE_SIZE, height: 2 * TILE_SIZE },
-    draw() { }
-  },
-  // Room 4 → Room 3 (left edge, tiles 2-3)
-  {
-    id: 'door_room4_to_room3',
-    type: 'door', room: 'room4', edge: 'left',
-    y: 2 * TILE_SIZE, height: 2 * TILE_SIZE,
-    targetRoom: 'room3', spawnX: 18 * TILE_SIZE, spawnY: 2 * TILE_SIZE,
-    interactionArea: { x: -TILE_SIZE, y: 2 * TILE_SIZE, width: TILE_SIZE, height: 2 * TILE_SIZE },
-    draw() { }
-  },
-
-  // Room 4 → Garden (bottom, tiles 3-4, LOCKED)
-  {
-    id: 'door_to_garden',
-    type: 'door', room: 'room4', edge: 'bottom',
-    x: 3 * TILE_SIZE, width: 2 * TILE_SIZE,
-    locked: true,
-    targetRoom: 'garden', spawnX: 7 * TILE_SIZE, spawnY: 1 * TILE_SIZE,
-    interactionArea: { x: 3 * TILE_SIZE, y: 350, width: 2 * TILE_SIZE, height: TILE_SIZE },
-    // Separate area for lock interaction (inside room, near door)
-    lockArea: { x: 3 * TILE_SIZE, y: 5 * TILE_SIZE, width: 2 * TILE_SIZE, height: 2 * TILE_SIZE },
-    draw() { }
-  },
-  // Garden → Room 4 (top, tiles 7-8)
-  {
-    id: 'door_garden_to_room4',
-    type: 'door', room: 'garden', edge: 'top',
-    x: 7 * TILE_SIZE, width: 2 * TILE_SIZE,
-    targetRoom: 'room4', spawnX: 3 * TILE_SIZE, spawnY: 5 * TILE_SIZE,
-    interactionArea: { x: 7 * TILE_SIZE, y: -TILE_SIZE, width: 2 * TILE_SIZE, height: TILE_SIZE },
-    draw() { }
-  }
 ];

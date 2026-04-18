@@ -1,109 +1,5 @@
 // audio.js - Audio system: track registry, volume/pitch/loop-points, context switching
-
-// ---------------------------------------------------------------------------
-// Time parser
-// Accepts: 0 (beginning), -1 (full song), or "Min:Sec:Ms" e.g. "1:10:80"
-// ---------------------------------------------------------------------------
-function parseAudioTime(value) {
-  if (value === -1) return -1;   // sentinel: no end cap, use native loop
-  if (value === 0 || value === '0') return 0;
-  if (typeof value === 'string' && value.includes(':')) {
-    const [min, sec, ms = 0] = value.split(':').map(Number);
-    return min * 60 + sec + ms / 1000;
-  }
-  return parseFloat(value);
-}
-
-// ---------------------------------------------------------------------------
-// Pitch conversion
-// 100 = normal, <100 = lower pitch, >100 = higher pitch
-// Internally maps to playbackRate: pitch / 100
-// ---------------------------------------------------------------------------
-function pitchToRate(pitch) {
-  return (pitch !== undefined ? pitch : 100) / 100;
-}
-
-// ---------------------------------------------------------------------------
-// Track Definitions
-// Add or edit tracks here. Fields:
-//   src    — path to audio file
-//   volume — 0.0 to 1.0
-//   pitch  — 100 = normal; <100 = lower pitch, >100 = higher pitch
-//   start  — 0 = from beginning, or "Min:Sec:Ms"
-//   end    — -1 = play full song, or "Min:Sec:Ms" to cut early
-//   loop   — true to loop
-// ---------------------------------------------------------------------------
-const TRACKS = {
-  menu: {
-    src: 'audio/menu_theme.mp3',   // ← add your menu theme file here
-    volume: 0.75,
-    pitch: 100,
-    start: 0,
-    end: -1,
-    loop: true
-  },
-  ingame: {
-    src: 'audio/partytime.mp3',
-    volume: 1.0,
-    pitch: 100,
-    start: 0,
-    end: -1,
-    loop: true
-  },
-  garden: {
-    src: 'audio/partytime.mp3',
-    volume: 0.8,
-    pitch: 100,
-    start: 0,
-    end: -1,
-    loop: true
-  }
-  // Add more tracks as needed, then reference them via musicTrack in map.js
-};
-
-// ---------------------------------------------------------------------------
-// SFX Registry
-// Fields: src, volume, pitch (100 = normal, <100 = lower, >100 = higher)
-// ---------------------------------------------------------------------------
-const SFX = {
-  textbox: {
-    src: 'audio/skiptext.wav',
-    volume: 0.8,
-    pitch: 100
-  },
-  door: {
-    src: 'audio/door_enter.wav',
-    volume: 1.0,
-    pitch: 100
-  },
-  heal: {
-    src: 'audio/recover_health.wav',
-    volume: 1.0,
-    pitch: 100
-  },
-  damage: {
-    src: 'audio/take_dmg.wav',
-    volume: 1.0,
-    randomPitch: true,
-    pitchRange: [80, 120]
-  },
-  menu_nav: { src: 'audio/menu_nav.wav', volume: 1.0, pitch: 100 },
-  menu_select: { src: 'audio/menu_select.wav', volume: 1.0, pitch: 100 },
-  menu_enter: { src: 'audio/menu_select.wav', volume: 1.0, pitch: 100 },
-  locked_door: { src: 'audio/door_locked.wav', volume: 1.0, pitch: 100 },
-  unlock_door: { src: 'audio/unlock_door.wav', volume: 1.0, pitch: 100 },
-  save_game: { src: 'audio/save_game.wav', volume: 1.0, pitch: 100 },
-  item_pickup: { src: 'audio/item_pickup.wav', volume: 1.0, pitch: 100 },
-  walk: [
-    { src: 'audio/player_step.wav', volume: 1.0, pitch: 800 },
-    { src: 'audio/player_step.wav', volume: 1.0, pitch: 50 }
-  ],
-  start_game: { src: 'audio/start_load_fade.wav', volume: 1.0, pitch: 100 },
-  player_death: { src: 'audio/player_death.wav', volume: 1.0, pitch: 100 },
-  knife_use: { src: 'audio/knife_use.wav', volume: 1.0, pitch: 100 },
-  hit_enemy: { src: 'audio/hit_enemy.wav', volume: 1.0, pitch: 100 },
-  entity_death: { src: 'audio/entity_death.wav', volume: 1.0, pitch: 100 }
-};
+// Reads from CSV_MUSIC and CSV_SOUNDS (loaded by csv_loader.js)
 
 // ---------------------------------------------------------------------------
 // Internal state
@@ -120,7 +16,7 @@ window.AudioManager = {
 
   // --- Public API ---
 
-  // Switch to a named track (from TRACKS). No-op if already playing.
+  // Switch to a named track (from CSV_MUSIC). No-op if already playing.
   playTrack(id) {
     if (_currentId === id) {
       if (_currentAudio && _currentAudio.paused && _gestureOk) {
@@ -130,23 +26,23 @@ window.AudioManager = {
     }
     this._stop();
 
-    const cfg = TRACKS[id];
+    const tracks = window.CSV_MUSIC || {};
+    const cfg = tracks[id];
     if (!cfg) { console.warn('AudioManager: unknown track', id); return; }
-
-    const startSec = parseAudioTime(cfg.start);
-    const endSec = parseAudioTime(cfg.end);
 
     const audio = new Audio(cfg.src);
     audio.volume = cfg.volume;
-    audio.playbackRate = pitchToRate(cfg.pitch);
-    audio.currentTime = startSec;
+    audio.playbackRate = 1.0;
+    audio.currentTime = cfg.start || 0;
 
-    if (endSec === -1) {
+    const endSec = cfg.end;
+    if (endSec === -1 || endSec === undefined) {
       // Native loop — no custom end point
-      audio.loop = cfg.loop;
+      audio.loop = cfg.loop || false;
     } else {
       // Custom end point: use timeupdate to loop/stop at endSec
       audio.loop = false;
+      const startSec = cfg.start || 0;
       _loopHandler = () => {
         if (audio.currentTime >= endSec) {
           if (cfg.loop) {
@@ -183,28 +79,36 @@ window.AudioManager = {
   stopMusic() { this._stop(); },
 
   playSFX(key) {
-    let cfgInit = SFX[key];
-    if (!cfgInit) return;
+    const sounds = window.CSV_SOUNDS || {};
+    const group = sounds[key];
+    if (!group || !group.entries || group.entries.length === 0) return;
 
-    let cfg = cfgInit;
-    // Sequential fallback for array-based configs (double audios)
-    if (Array.isArray(cfgInit)) {
-      if (typeof cfgInit._index === 'undefined') cfgInit._index = 0;
-      cfg = cfgInit[cfgInit._index];
-      cfgInit._index = (cfgInit._index + 1) % cfgInit.length;
-    }
-
-    const sfx = new Audio(cfg.src);
-    sfx.volume = cfg.volume;
-
-    // Process random pitch if enabled
-    if (cfg.randomPitch && cfg.pitchRange && cfg.pitchRange.length === 2) {
-      const min = cfg.pitchRange[0];
-      const max = cfg.pitchRange[1];
-      sfx.playbackRate = pitchToRate(min + Math.random() * (max - min));
+    let entry;
+    if (group.entries.length === 1) {
+      entry = group.entries[0];
     } else {
-      sfx.playbackRate = pitchToRate(cfg.pitch);
+      // Multi-entry group: use alternation mode
+      if (group.alternation === 'Random') {
+        entry = group.entries[Math.floor(Math.random() * group.entries.length)];
+      } else {
+        // Sequence (default for multi-entry)
+        entry = group.entries[group._index || 0];
+        group._index = ((group._index || 0) + 1) % group.entries.length;
+      }
     }
+
+    const sfx = new Audio(entry.src);
+    sfx.volume = entry.volume;
+
+    // Pitch handling
+    if (entry.randomPitch) {
+      const pitch = entry.minPitch + Math.random() * (entry.maxPitch - entry.minPitch);
+      sfx.playbackRate = pitch / 100;
+    } else {
+      sfx.playbackRate = entry.minPitch / 100;
+    }
+
+    if (entry.loop) sfx.loop = true;
 
     sfx.play().catch(e => console.warn('SFX:', e));
   },
@@ -228,7 +132,7 @@ window.AudioManager = {
   playEntityDeathSound() { this.playSFX('entity_death'); },
 
   // Expose track registry so it can be tweaked at runtime
-  tracks: TRACKS,
+  get tracks() { return window.CSV_MUSIC || {}; },
 
   // --- Internal ---
   _stop() {

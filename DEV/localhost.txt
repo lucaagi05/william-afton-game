@@ -1,0 +1,2 @@
+node -v; python --version
+npx -y http-server . -p 8080

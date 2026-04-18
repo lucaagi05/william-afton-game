@@ -24,8 +24,23 @@
     'Show/Hide Hitboxes',
     'Show/Hide Tile Grid',
     'Show/Hide Coordinates',
-    'Toggle Entity Positions'
+    'Toggle Entity Positions',
+    'Add Item'
   ];
+
+  // Add Item sub-menu types
+  const ADD_ITEM_TYPES = ['Room', 'Item', 'Entity'];
+  const ENTITY_TYPES = ['Door', 'Save Point', 'Obstacle', 'Enemy'];
+
+  // Room editor state
+  let roomEditorActive = false;
+  let roomEditorFields = null;
+  let roomEditorFieldIndex = 0;
+  let roomEditorInputBuffer = '';
+  let roomEditorEditingField = false;
+
+  // Counter for unique IDs
+  let addCounter = 0;
 
   function getRoomList() {
     if (!window.MapManager || !window.MapManager.rooms) return [];
@@ -54,8 +69,14 @@
       return;
     }
 
+    if (roomEditorActive) {
+      drawRoomEditor(ctx);
+      ctx.restore();
+      return;
+    }
+
     const panelW = 350;
-    const panelH = 440;
+    const panelH = 470;
     const px = 30;
     const py = (ch - panelH) / 2;
 
@@ -83,9 +104,23 @@
       drawSubMenu(ctx, px, py + 55, panelW, 'Select Entity', names);
 
       // Fixed button at the bottom
-      const bottomY = py + 395;
+      const bottomY = py + 425;
       ctx.font = '14px monospace';
       const isSelected = debugSubSelected === ents.length;
+      ctx.fillStyle = isSelected ? '#0ff' : '#0f0';
+      ctx.fillText(isSelected ? '> EXPORT CHANGES' : '  EXPORT CHANGES', px + 15, bottomY);
+    } else if (debugSubMenu === 'additem') {
+      drawSubMenu(ctx, px, py + 55, panelW, 'Add Item Type', ADD_ITEM_TYPES);
+      const bottomY = py + 425;
+      ctx.font = '14px monospace';
+      const isSelected = debugSubSelected === ADD_ITEM_TYPES.length;
+      ctx.fillStyle = isSelected ? '#0ff' : '#0f0';
+      ctx.fillText(isSelected ? '> EXPORT CHANGES' : '  EXPORT CHANGES', px + 15, bottomY);
+    } else if (debugSubMenu === 'addentity_type') {
+      drawSubMenu(ctx, px, py + 55, panelW, 'Entity Type', ENTITY_TYPES);
+      const bottomY = py + 425;
+      ctx.font = '14px monospace';
+      const isSelected = debugSubSelected === ENTITY_TYPES.length;
       ctx.fillStyle = isSelected ? '#0ff' : '#0f0';
       ctx.fillText(isSelected ? '> EXPORT CHANGES' : '  EXPORT CHANGES', px + 15, bottomY);
     } else {
@@ -262,6 +297,11 @@
       return;
     }
 
+    if (roomEditorActive) {
+      handleRoomEditorInput(e);
+      return;
+    }
+
     if (debugSubMenu) {
       handleSubMenuInput(e);
       return;
@@ -310,6 +350,46 @@
         }
       } else if (e.key === 'Escape') {
         debugSubMenu = null;
+      }
+    } else if (debugSubMenu === 'additem') {
+      const itemCount = ADD_ITEM_TYPES.length + 1; // +1 for EXPORT CHANGES
+      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+        debugSubSelected = (debugSubSelected - 1 + itemCount) % itemCount;
+      } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+        debugSubSelected = (debugSubSelected + 1) % itemCount;
+      } else if (e.key === 'Enter') {
+        if (debugSubSelected === ADD_ITEM_TYPES.length) {
+          exportEntityChanges();
+        } else {
+          const selected = ADD_ITEM_TYPES[debugSubSelected];
+          if (selected === 'Room') {
+            startRoomEditor();
+          } else if (selected === 'Item') {
+            createNewItem();
+          } else if (selected === 'Entity') {
+            debugSubMenu = 'addentity_type';
+            debugSubSelected = 0;
+          }
+        }
+      } else if (e.key === 'Escape') {
+        debugSubMenu = null;
+      }
+    } else if (debugSubMenu === 'addentity_type') {
+      const itemCount = ENTITY_TYPES.length + 1; // +1 for EXPORT CHANGES
+      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+        debugSubSelected = (debugSubSelected - 1 + itemCount) % itemCount;
+      } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+        debugSubSelected = (debugSubSelected + 1) % itemCount;
+      } else if (e.key === 'Enter') {
+        if (debugSubSelected === ENTITY_TYPES.length) {
+          exportEntityChanges();
+        } else {
+          const selected = ENTITY_TYPES[debugSubSelected];
+          createNewEntity(selected);
+        }
+      } else if (e.key === 'Escape') {
+        debugSubMenu = 'additem';
+        debugSubSelected = 2; // Return to Entity option
       }
     }
   }
@@ -458,6 +538,11 @@
 
       case 'Toggle Entity Positions':
         debugSubMenu = 'entities';
+        debugSubSelected = 0;
+        break;
+
+      case 'Add Item':
+        debugSubMenu = 'additem';
         debugSubSelected = 0;
         break;
     }
@@ -611,6 +696,327 @@
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(a.href);
+  }
+
+  // --- Create new item pickup ---
+  function createNewItem() {
+    addCounter++;
+    const px = window.player ? window.player.x : 0;
+    const py = window.player ? window.player.y : 0;
+    const currentRoom = window.MapManager ? window.MapManager.currentRoom : 'room1';
+    const newId = 'new_item_' + addCounter;
+
+    const ent = {
+      id: newId,
+      type: 'item',
+      room: currentRoom,
+      interactionId: null,
+      area: { x: px, y: py, width: TILE_SIZE, height: TILE_SIZE },
+      color: '#0ff',
+      interactionArea: { x: px - TILE_SIZE, y: py - TILE_SIZE, width: TILE_SIZE * 3, height: TILE_SIZE * 3 },
+      collected: false,
+      draw(ctx) {
+        ctx.save(); ctx.fillStyle = this.color;
+        const s = TILE_SIZE * 0.5;
+        const ox = this.area.x + (TILE_SIZE - s) / 2;
+        const oy = this.area.y + (TILE_SIZE - s) / 2;
+        ctx.fillRect(ox, oy, s, s);
+        ctx.restore();
+      }
+    };
+
+    window.Entities.push(ent);
+    startEntityEdit(ent);
+  }
+
+  // --- Create new entity (Door, Save Point, Obstacle, Enemy) ---
+  function createNewEntity(typeName) {
+    addCounter++;
+    const px = window.player ? window.player.x : 0;
+    const py = window.player ? window.player.y : 0;
+    const currentRoom = window.MapManager ? window.MapManager.currentRoom : 'room1';
+    let ent;
+
+    switch (typeName) {
+      case 'Door': {
+        const newId = 'new_door_' + addCounter;
+        ent = {
+          id: newId,
+          type: 'door',
+          room: currentRoom,
+          targetRoom: currentRoom,
+          spawnX: 0,
+          spawnY: 0,
+          locked: false,
+          interactionArea: { x: px, y: py, width: TILE_SIZE, height: TILE_SIZE },
+          draw(ctx) {}
+        };
+        break;
+      }
+      case 'Save Point': {
+        const newId = 'new_save_' + addCounter;
+        ent = {
+          id: newId,
+          type: 'savepoint',
+          room: currentRoom,
+          interactionId: newId,
+          area: { x: px, y: py, width: TILE_SIZE, height: TILE_SIZE },
+          color: '#f00',
+          interactionArea: { x: px - TILE_SIZE, y: py - TILE_SIZE, width: TILE_SIZE * 3, height: TILE_SIZE * 3 },
+          draw(ctx) {
+            ctx.save(); ctx.shadowColor = '#f44'; ctx.shadowBlur = 15;
+            ctx.fillStyle = this.color;
+            const s = TILE_SIZE * 0.5;
+            const ox = this.area.x + (TILE_SIZE - s) / 2;
+            const oy = this.area.y + (TILE_SIZE - s) / 2;
+            ctx.fillRect(ox, oy, s, s);
+            ctx.restore();
+          }
+        };
+        break;
+      }
+      case 'Obstacle': {
+        const newId = 'new_obstacle_' + addCounter;
+        ent = {
+          id: newId,
+          type: 'obstacle',
+          room: currentRoom,
+          hitbox: { x: px, y: py, width: TILE_SIZE, height: TILE_SIZE },
+          draw(ctx) {
+            ctx.save();
+            ctx.fillStyle = 'rgba(100,100,100,0.6)';
+            ctx.fillRect(this.hitbox.x, this.hitbox.y, this.hitbox.width, this.hitbox.height);
+            ctx.strokeStyle = '#888';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(this.hitbox.x, this.hitbox.y, this.hitbox.width, this.hitbox.height);
+            ctx.restore();
+          }
+        };
+        break;
+      }
+      case 'Enemy': {
+        const newId = 'new_enemy_' + addCounter;
+        ent = {
+          id: newId,
+          type: 'enemy',
+          room: currentRoom,
+          area: { x: px, y: py, width: TILE_SIZE, height: TILE_SIZE },
+          hitbox: { x: px, y: py, width: TILE_SIZE, height: TILE_SIZE },
+          hp: 5,
+          maxHp: 5,
+          dead: false,
+          showHealthBar: false,
+          color: '#f00',
+          draw(ctx) {
+            if (this.dead) return;
+            ctx.save();
+            ctx.shadowColor = '#f00'; ctx.shadowBlur = 12;
+            ctx.fillStyle = this.color;
+            const s = TILE_SIZE * 0.6;
+            const ox = this.area.x + (TILE_SIZE - s) / 2;
+            const oy = this.area.y + (TILE_SIZE - s) / 2;
+            ctx.fillRect(ox, oy, s, s);
+            ctx.restore();
+          }
+        };
+        break;
+      }
+      default:
+        return;
+    }
+
+    window.Entities.push(ent);
+    startEntityEdit(ent);
+  }
+
+  // --- Room editor ---
+  function startRoomEditor() {
+    addCounter++;
+    roomEditorFields = [
+      { label: 'Room ID', key: 'id', value: 'new_room_' + addCounter },
+      { label: 'Name', key: 'name', value: 'New Room ' + addCounter },
+      { label: 'Width (tiles)', key: 'tilesW', value: '12' },
+      { label: 'Height (tiles)', key: 'tilesH', value: '12' },
+      { label: 'Music Track', key: 'music', value: 'ingame' },
+      { label: 'Link Door From', key: 'linkFrom', value: window.MapManager ? window.MapManager.currentRoom : 'room1' }
+    ];
+    roomEditorFieldIndex = 0;
+    roomEditorInputBuffer = '';
+    roomEditorEditingField = false;
+    roomEditorActive = true;
+    debugSubMenu = null;
+  }
+
+  function drawRoomEditor(ctx) {
+    const cw = ctx.canvas.width;
+    const ch = ctx.canvas.height;
+    const panelW = 400;
+    const panelH = 350;
+    const px = (cw - panelW) / 2;
+    const py = (ch - panelH) / 2;
+
+    ctx.fillStyle = 'rgba(20, 20, 20, 0.95)';
+    ctx.strokeStyle = '#0f0';
+    ctx.lineWidth = 2;
+    ctx.fillRect(px, py, panelW, panelH);
+    ctx.strokeRect(px, py, panelW, panelH);
+
+    ctx.font = '18px monospace';
+    ctx.fillStyle = '#0f0';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('CREATE NEW ROOM', px + 15, py + 12);
+
+    ctx.font = '13px monospace';
+    const startY = py + 50;
+    for (let i = 0; i < roomEditorFields.length; i++) {
+      const f = roomEditorFields[i];
+      const y = startY + i * 36;
+      const selected = i === roomEditorFieldIndex;
+
+      ctx.fillStyle = selected ? '#0ff' : '#aaa';
+      ctx.fillText(f.label + ':', px + 15, y);
+
+      // Value box
+      const valX = px + 180;
+      const valW = panelW - 195;
+      ctx.fillStyle = selected && roomEditorEditingField ? 'rgba(0,255,255,0.15)' : 'rgba(255,255,255,0.05)';
+      ctx.fillRect(valX, y - 2, valW, 22);
+      ctx.strokeStyle = selected ? '#0ff' : '#555';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(valX, y - 2, valW, 22);
+
+      ctx.fillStyle = selected && roomEditorEditingField ? '#fff' : '#ccc';
+      const displayVal = selected && roomEditorEditingField ? roomEditorInputBuffer + '_' : f.value;
+      ctx.fillText(displayVal, valX + 5, y + 2);
+    }
+
+    ctx.font = '11px monospace';
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.textAlign = 'center';
+    ctx.fillText('Up/Down = select field | Enter = edit/confirm | Esc = cancel', cw / 2, py + panelH - 30);
+    ctx.fillStyle = '#0f0';
+    ctx.fillText('Press F5 to CREATE ROOM', cw / 2, py + panelH - 12);
+  }
+
+  // Room editor input handling (in main keydown listener)
+  function handleRoomEditorInput(e) {
+    if (e.key === 'Escape') {
+      if (roomEditorEditingField) {
+        roomEditorEditingField = false;
+      } else {
+        roomEditorActive = false;
+        roomEditorFields = null;
+        debugSubMenu = 'additem';
+        debugSubSelected = 0;
+      }
+      e.stopImmediatePropagation();
+      return;
+    }
+
+    if (roomEditorEditingField) {
+      if (e.key === 'Enter') {
+        roomEditorFields[roomEditorFieldIndex].value = roomEditorInputBuffer;
+        roomEditorEditingField = false;
+      } else if (e.key === 'Backspace') {
+        e.preventDefault();
+        roomEditorInputBuffer = roomEditorInputBuffer.slice(0, -1);
+      } else if (e.key.length === 1) {
+        roomEditorInputBuffer += e.key;
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+      roomEditorFieldIndex = (roomEditorFieldIndex - 1 + roomEditorFields.length) % roomEditorFields.length;
+    } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+      roomEditorFieldIndex = (roomEditorFieldIndex + 1) % roomEditorFields.length;
+    } else if (e.key === 'Enter') {
+      roomEditorEditingField = true;
+      roomEditorInputBuffer = roomEditorFields[roomEditorFieldIndex].value;
+    } else if (e.key === 'F5') {
+      e.preventDefault();
+      finalizeRoomCreation();
+    }
+  }
+
+  function finalizeRoomCreation() {
+    const fields = {};
+    for (const f of roomEditorFields) fields[f.key] = f.value;
+
+    const roomId = fields.id;
+    const tilesW = parseInt(fields.tilesW) || 12;
+    const tilesH = parseInt(fields.tilesH) || 12;
+    const pixelW = tilesW * TILE_SIZE;
+    const pixelH = tilesH * TILE_SIZE;
+    const linkFrom = fields.linkFrom;
+
+    // Create room in MapManager
+    if (window.MapManager && window.MapManager.rooms) {
+      window.MapManager.rooms[roomId] = {
+        name: fields.name,
+        pixelWidth: pixelW,
+        pixelHeight: pixelH,
+        musicTrack: fields.music,
+        get entities() { return window.Entities ? window.Entities.filter(e => e.room === roomId && !e.collected) : []; },
+        get obstacles() { return this.entities.filter(e => e.type === 'obstacle').map(e => e.hitbox); },
+        get doors() { return this.entities.filter(e => e.type === 'door'); }
+      };
+    }
+
+    // Create door from linkFrom room to new room
+    if (linkFrom && window.MapManager.rooms[linkFrom]) {
+      addCounter++;
+      const doorToNew = {
+        id: 'door_to_' + roomId + '_' + addCounter,
+        type: 'door',
+        room: linkFrom,
+        targetRoom: roomId,
+        spawnX: Math.floor(tilesW / 2) * TILE_SIZE,
+        spawnY: Math.floor(tilesH / 2) * TILE_SIZE,
+        locked: false,
+        interactionArea: {
+          x: window.player ? window.player.x : 0,
+          y: window.player ? window.player.y : 0,
+          width: TILE_SIZE,
+          height: TILE_SIZE
+        },
+        draw(ctx) {}
+      };
+      window.Entities.push(doorToNew);
+
+      // Create return door in new room back to linkFrom
+      addCounter++;
+      const doorBack = {
+        id: 'door_to_' + linkFrom + '_' + addCounter,
+        type: 'door',
+        room: roomId,
+        targetRoom: linkFrom,
+        spawnX: window.player ? window.player.x : 0,
+        spawnY: window.player ? window.player.y : 0,
+        locked: false,
+        interactionArea: {
+          x: Math.floor(tilesW / 2) * TILE_SIZE,
+          y: Math.floor(tilesH / 2) * TILE_SIZE,
+          width: TILE_SIZE,
+          height: TILE_SIZE
+        },
+        draw(ctx) {}
+      };
+      window.Entities.push(doorBack);
+    }
+
+    roomEditorActive = false;
+    roomEditorFields = null;
+    debugSubMenu = null;
+    debugOpen = false;
+
+    // Jump to the new room
+    if (window.MapManager) {
+      window.MapManager.currentRoom = roomId;
+      window.player.x = Math.floor(tilesW / 2) * TILE_SIZE;
+      window.player.y = Math.floor(tilesH / 2) * TILE_SIZE;
+    }
   }
 
   window.DebugMenu = {

@@ -380,59 +380,10 @@ window.interactions = [
     }
   },
 
+  // --- LOCKED DOORS — auto-generated from CSV + map files ---
+  // See: data/Locations.csv (IsLocked and KeyID columns)
 
 
-
-  // --- LOCKED DOOR — "Door is locked" (no key) ---
-  {
-    id: 'locked_door_nokey',
-    room: 'room4',
-    type: 'text',
-    get area() {
-      const door = window.Entities.find(e => e.id === 'door_to_garden');
-      return door && door.lockArea ? door.lockArea : { x: -999, y: -999, width: 0, height: 0 };
-    },
-    trigger() {
-      const door = window.Entities.find(e => e.id === 'door_to_garden');
-      return door && door.locked && !(window.Inventory && window.Inventory.has('key'));
-    },
-    onActivate() {
-      if (window.AudioManager) window.AudioManager.playLockedDoorSound();
-    },
-    text: {
-      pages: ["The door is locked. You need a key."],
-      font: '20px monospace',
-      color: '#f44',
-      frame: { fill: '#222', outline: '#f44', height: 90, margin: 16 }
-    }
-  },
-
-  // --- LOCKED DOOR — "Unlock with key" (has key) ---
-  {
-    id: 'locked_door_unlock',
-    room: 'room4',
-    type: 'text',
-    get area() {
-      const door = window.Entities.find(e => e.id === 'door_to_garden');
-      return door && door.lockArea ? door.lockArea : { x: -999, y: -999, width: 0, height: 0 };
-    },
-    trigger() {
-      const door = window.Entities.find(e => e.id === 'door_to_garden');
-      return door && door.locked && window.Inventory && window.Inventory.has('key');
-    },
-    onActivate() {
-      const door = window.Entities.find(e => e.id === 'door_to_garden');
-      if (door) door.locked = false;
-      if (window.Inventory) window.Inventory.remove('key');
-      if (window.AudioManager) window.AudioManager.playUnlockDoorSound();
-    },
-    text: {
-      pages: ["You used the {Key:#ff0}. The door is now open."],
-      font: '20px monospace',
-      color: '#0f0',
-      frame: { fill: '#222', outline: '#0f0', height: 90, margin: 16 }
-    }
-  },
 
   // --- KNIFE ITEM pickup ---
   {
@@ -458,6 +409,168 @@ window.interactions = [
       font: '20px monospace',
       color: '#fff',
       frame: { fill: '#222', outline: '#f44', height: 90, margin: 16 }
+    }
+  },
+
+  // --- PIE ITEM pickup ---
+  {
+    id: 'pie_item',
+    room: 'room1',
+    type: 'text',
+    get area() {
+      const e = window.Entities.find(en => en.id === 'pie_item');
+      return e && !e.collected ? e.interactionArea : { x: -999, y: -999, width: 0, height: 0 };
+    },
+    trigger() {
+      const e = window.Entities.find(en => en.id === 'pie_item');
+      return e && !e.collected;
+    },
+    onActivate() {
+      const e = window.Entities.find(en => en.id === 'pie_item');
+      if (e) e.collected = true;
+      if (window.Inventory) window.Inventory.add('pie');
+      if (window.AudioManager) window.AudioManager.playItemPickupSound();
+    },
+    text: {
+      pages: ["You found a {Pie:#ffa500}."],
+      font: '20px monospace',
+      color: '#fff',
+      frame: { fill: '#222', outline: '#ffa500', height: 90, margin: 16 }
+    }
+  },
+
+  // --- CAKE ITEM pickup ---
+  {
+    id: 'cake_item',
+    room: 'room1',
+    type: 'text',
+    get area() {
+      const e = window.Entities.find(en => en.id === 'cake_item');
+      return e && !e.collected ? e.interactionArea : { x: -999, y: -999, width: 0, height: 0 };
+    },
+    trigger() {
+      const e = window.Entities.find(en => en.id === 'cake_item');
+      return e && !e.collected;
+    },
+    onActivate() {
+      const e = window.Entities.find(en => en.id === 'cake_item');
+      if (e) e.collected = true;
+      if (window.Inventory) window.Inventory.add('cake');
+      if (window.AudioManager) window.AudioManager.playItemPickupSound();
+    },
+    text: {
+      pages: ["You found a {Cake:#ff69b4}."],
+      font: '20px monospace',
+      color: '#fff',
+      frame: { fill: '#222', outline: '#ff69b4', height: 90, margin: 16 }
+    }
+  },
+
+  // --- MEDICINE ITEM pickup ---
+  {
+    id: 'medicine_item',
+    room: 'room1',
+    type: 'text',
+    get area() {
+      const e = window.Entities.find(en => en.id === 'medicine_item');
+      return e && !e.collected ? e.interactionArea : { x: -999, y: -999, width: 0, height: 0 };
+    },
+    trigger() {
+      const e = window.Entities.find(en => en.id === 'medicine_item');
+      return e && !e.collected;
+    },
+    onActivate() {
+      const e = window.Entities.find(en => en.id === 'medicine_item');
+      if (e) e.collected = true;
+      if (window.Inventory) window.Inventory.add('medicine');
+      if (window.AudioManager) window.AudioManager.playItemPickupSound();
+    },
+    text: {
+      pages: ["You found some {Medicine:#ffffff}."],
+      font: '20px monospace',
+      color: '#fff',
+      frame: { fill: '#222', outline: '#aaa', height: 90, margin: 16 }
+    }
+  },
+
+  // --- VITAMINS ITEM pickup ---
+  {
+    id: 'vitamins_item',
+    room: 'room1',
+    type: 'text',
+    get area() {
+      const e = window.Entities.find(en => en.id === 'vitamins_item');
+      return e && !e.collected ? e.interactionArea : { x: -999, y: -999, width: 0, height: 0 };
+    },
+    trigger() {
+      const e = window.Entities.find(en => en.id === 'vitamins_item');
+      return e && !e.collected;
+    },
+    onActivate() {
+      const e = window.Entities.find(en => en.id === 'vitamins_item');
+      if (e) e.collected = true;
+      if (window.Inventory) window.Inventory.add('vitamins');
+      if (window.AudioManager) window.AudioManager.playItemPickupSound();
+    },
+    text: {
+      pages: ["You found {Vitamins:#ffff00}."],
+      font: '20px monospace',
+      color: '#fff',
+      frame: { fill: '#222', outline: '#ffff00', height: 90, margin: 16 }
+    }
+  },
+
+  // --- DRUGS ITEM pickup ---
+  {
+    id: 'drugs_item',
+    room: 'room1',
+    type: 'text',
+    get area() {
+      const e = window.Entities.find(en => en.id === 'drugs_item');
+      return e && !e.collected ? e.interactionArea : { x: -999, y: -999, width: 0, height: 0 };
+    },
+    trigger() {
+      const e = window.Entities.find(en => en.id === 'drugs_item');
+      return e && !e.collected;
+    },
+    onActivate() {
+      const e = window.Entities.find(en => en.id === 'drugs_item');
+      if (e) e.collected = true;
+      if (window.Inventory) window.Inventory.add('drugs');
+      if (window.AudioManager) window.AudioManager.playItemPickupSound();
+    },
+    text: {
+      pages: ["You found suspicious {Drugs:#800080}."],
+      font: '20px monospace',
+      color: '#fff',
+      frame: { fill: '#222', outline: '#800080', height: 90, margin: 16 }
+    }
+  },
+
+  // --- MASK ITEM pickup ---
+  {
+    id: 'mask_item',
+    room: 'room1',
+    type: 'text',
+    get area() {
+      const e = window.Entities.find(en => en.id === 'mask_item');
+      return e && !e.collected ? e.interactionArea : { x: -999, y: -999, width: 0, height: 0 };
+    },
+    trigger() {
+      const e = window.Entities.find(en => en.id === 'mask_item');
+      return e && !e.collected;
+    },
+    onActivate() {
+      const e = window.Entities.find(en => en.id === 'mask_item');
+      if (e) e.collected = true;
+      if (window.Inventory) window.Inventory.add('mask');
+      if (window.AudioManager) window.AudioManager.playItemPickupSound();
+    },
+    text: {
+      pages: ["You found a terrifying {Mask:#696969}."],
+      font: '20px monospace',
+      color: '#fff',
+      frame: { fill: '#222', outline: '#696969', height: 90, margin: 16 }
     }
   }
 ];

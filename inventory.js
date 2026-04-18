@@ -32,6 +32,76 @@ const INVENTORY_ITEMS = {
     description: "A small kitchen knife. 1 tile range. Press Backspace to attack.",
     stackable: false,
     damage: 1
+  },
+  pie: {
+    id: 'pie', name: 'Pie', category: 'consumable',
+    description: "A warm slice of pie. Heals 10 HP.",
+    stackable: true,
+    onUse() {
+      if (!window.Health) return false;
+      if (window.Health.currentHP >= window.Health.maxHP) return false;
+      window.Health.heal(10);
+      return true;
+    }
+  },
+  cake: {
+    id: 'cake', name: 'Cake', category: 'consumable',
+    description: "A delicious cake. Heals 15 HP.",
+    stackable: true,
+    onUse() {
+      if (!window.Health) return false;
+      if (window.Health.currentHP >= window.Health.maxHP) return false;
+      window.Health.heal(15);
+      return true;
+    }
+  },
+  medicine: {
+    id: 'medicine', name: 'Medicine', category: 'consumable',
+    description: "A bottle of strong medicine. Recovers all health.",
+    stackable: true,
+    onUse() {
+      if (!window.Health) return false;
+      if (window.Health.currentHP >= window.Health.maxHP) return false;
+      window.Health.currentHP = window.Health.maxHP;
+      if (window.AudioManager) window.AudioManager.playHealSound();
+      return true;
+    }
+  },
+  vitamins: {
+    id: 'vitamins', name: 'Vitamins', category: 'consumable',
+    description: "A supplement bottle. Permanently increases max health by 5 HP.",
+    stackable: true,
+    onUse() {
+      if (!window.Health) return false;
+      window.Health.maxHP = window.Health.maxHP + 5;
+      window.Health.heal(5);
+      return true;
+    }
+  },
+  drugs: {
+    id: 'drugs', name: 'Drugs', category: 'consumable',
+    description: "Suspicious pills. Doubles walking speed for 1 minute, but drains 1 HP every 10 seconds.",
+    stackable: true,
+    onUse() {
+      window.drugEffect = {
+        active: true,
+        endTime: Date.now() + 60000,
+        lastTickTime: Date.now()
+      };
+      return true;
+    }
+  },
+  mask: {
+    id: 'mask', name: 'Mask', category: 'consumable',
+    description: "A terrifying mask. Scares off all enemies for 1 minute, making them run away.",
+    stackable: true,
+    onUse() {
+      window.maskEffect = {
+        active: true,
+        endTime: Date.now() + 60000
+      };
+      return true;
+    }
   }
 };
 window.INVENTORY_ITEMS = INVENTORY_ITEMS;
@@ -87,7 +157,7 @@ function getCurrentActions() {
   return [];
 }
 
-function drawInventory(ctx) {
+function drawInventory(ctx, layer = 'all') {
   if (!inventoryOpen) return;
 
   const cw = ctx.canvas.width;
@@ -100,11 +170,13 @@ function drawInventory(ctx) {
   ctx.save();
 
   // Background
-  ctx.fillStyle = 'rgba(20, 20, 20, 0.95)';
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 3;
-  ctx.fillRect(boxX, boxY, boxW, boxH);
-  ctx.strokeRect(boxX, boxY, boxW, boxH);
+  if (layer === 'all' || layer === 'bg') {
+    ctx.fillStyle = 'rgba(20, 20, 20, 0.95)';
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 3;
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+  }
 
   // --- Category Tabs ---
   const tabW = boxW / 4;
@@ -115,17 +187,21 @@ function drawInventory(ctx) {
     const cat = CATEGORY_KEYS[i];
     const catDef = ITEM_CATEGORIES[cat];
 
-    ctx.fillStyle = i === activeTab ? 'rgba(20,20,20,0.95)' : 'rgba(40,40,40,0.8)';
-    ctx.fillRect(tx, ty, tabW, tabH);
-    ctx.strokeStyle = i === activeTab ? catDef.color : 'rgba(255,255,255,0.2)';
-    ctx.lineWidth = i === activeTab ? 2 : 1;
-    ctx.strokeRect(tx, ty, tabW, tabH);
+    if (layer === 'all' || layer === 'bg') {
+      ctx.fillStyle = i === activeTab ? 'rgba(20,20,20,0.95)' : 'rgba(40,40,40,0.8)';
+      ctx.fillRect(tx, ty, tabW, tabH);
+      ctx.strokeStyle = i === activeTab ? catDef.color : 'rgba(255,255,255,0.2)';
+      ctx.lineWidth = i === activeTab ? 2 : 1;
+      ctx.strokeRect(tx, ty, tabW, tabH);
+    }
 
-    ctx.font = '11px monospace';
-    ctx.fillStyle = i === activeTab ? catDef.color : 'rgba(255,255,255,0.35)';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(catDef.name, tx + tabW / 2, ty + tabH / 2);
+    if (layer === 'all' || layer === 'text') {
+      ctx.font = '11px monospace';
+      ctx.fillStyle = i === activeTab ? catDef.color : 'rgba(255,255,255,0.35)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(catDef.name, tx + tabW / 2, ty + tabH / 2);
+    }
   }
 
   const contentY = boxY + 12;
@@ -134,16 +210,18 @@ function drawInventory(ctx) {
   const catColor = ITEM_CATEGORIES[CATEGORY_KEYS[activeTab]].color;
 
   if (pageItems.length === 0) {
-    ctx.font = '16px monospace';
-    ctx.fillStyle = 'rgba(255,255,255,0.3)';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('No items', cw / 2, boxY + boxH / 2);
+    if (layer === 'all' || layer === 'text') {
+      ctx.font = '16px monospace';
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('No items', cw / 2, boxY + boxH / 2);
+    }
   } else if (inventoryShowingDesc) {
     // --- Description View ---
     const entry = getItemsForTab()[currentPage * ITEMS_PER_PAGE + inventorySelectedIndex];
     const item = entry ? INVENTORY_ITEMS[entry.id] : null;
-    if (item) {
+    if (item && (layer === 'all' || layer === 'text')) {
       ctx.font = '20px monospace';
       ctx.fillStyle = catColor;
       ctx.textAlign = 'left';
@@ -191,56 +269,66 @@ function drawInventory(ctx) {
       const iy = startY + i * rowH;
       const selected = i === inventorySelectedIndex;
 
-      // Selection highlight
-      if (selected) {
-        ctx.fillStyle = 'rgba(255,255,255,0.08)';
-        ctx.fillRect(boxX + 10, iy, boxW - 20, rowH - 4);
-        ctx.strokeStyle = catColor;
+      // Selection highlight and background icon
+      if (layer === 'all' || layer === 'bg') {
+        if (selected) {
+          ctx.fillStyle = 'rgba(255,255,255,0.08)';
+          ctx.fillRect(boxX + 10, iy, boxW - 20, rowH - 4);
+          ctx.strokeStyle = catColor;
+          ctx.lineWidth = 1;
+          ctx.strokeRect(boxX + 10, iy, boxW - 20, rowH - 4);
+        }
+
+        // Icon (colored cube)
+        const iconSize = 24;
+        const iconX = boxX + 24;
+        const iconY = iy + (rowH - 4 - iconSize) / 2;
+        ctx.fillStyle = catColor;
+        ctx.fillRect(iconX, iconY, iconSize, iconSize);
+        ctx.strokeStyle = selected ? '#fff' : 'rgba(255,255,255,0.3)';
         ctx.lineWidth = 1;
-        ctx.strokeRect(boxX + 10, iy, boxW - 20, rowH - 4);
+        ctx.strokeRect(iconX, iconY, iconSize, iconSize);
       }
 
-      // Icon (colored cube)
-      const iconSize = 24;
-      const iconX = boxX + 24;
-      const iconY = iy + (rowH - 4 - iconSize) / 2;
-      ctx.fillStyle = catColor;
-      ctx.fillRect(iconX, iconY, iconSize, iconSize);
-      ctx.strokeStyle = selected ? '#fff' : 'rgba(255,255,255,0.3)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(iconX, iconY, iconSize, iconSize);
+      if (layer === 'all' || layer === 'text') {
+        const iconSize = 24;
+        const iconX = boxX + 24;
+        const iconY = iy + (rowH - 4 - iconSize) / 2;
 
-      // Item initial on icon
-      ctx.font = '12px monospace';
-      ctx.fillStyle = '#000';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(item.name[0], iconX + iconSize / 2, iconY + iconSize / 2);
+        // Item initial on icon
+        ctx.font = '12px monospace';
+        ctx.fillStyle = '#000';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(item.name[0], iconX + iconSize / 2, iconY + iconSize / 2);
 
-      // Name
-      ctx.font = '16px monospace';
-      ctx.fillStyle = selected ? '#fff' : 'rgba(255,255,255,0.6)';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-      let nameStr = item.name;
-      if (equippedWeapon === item.id) nameStr += ' [E]';
-      if (item.stackable && entry.quantity > 1) {
-        nameStr += '  \u00d7' + entry.quantity;
+        // Name
+        ctx.font = '16px monospace';
+        ctx.fillStyle = selected ? '#fff' : 'rgba(255,255,255,0.6)';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        let nameStr = item.name;
+        if (equippedWeapon === item.id) nameStr += ' [E]';
+        if (item.stackable && entry.quantity > 1) {
+          nameStr += '  \u00d7' + entry.quantity;
+        }
+        ctx.fillText(nameStr, iconX + iconSize + 14, iy + (rowH - 4) / 2);
       }
-      ctx.fillText(nameStr, iconX + iconSize + 14, iy + (rowH - 4) / 2);
     }
   }
 
-  // Page indicator
-  ctx.font = '12px monospace';
-  ctx.fillStyle = 'rgba(255,255,255,0.4)';
-  ctx.textAlign = 'right';
-  ctx.textBaseline = 'bottom';
-  ctx.fillText((currentPage + 1) + '/' + totalPages, boxX + boxW - 15, boxY + boxH - 10);
+  if (layer === 'all' || layer === 'text') {
+    // Page indicator
+    ctx.font = '12px monospace';
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText((currentPage + 1) + '/' + totalPages, boxX + boxW - 15, boxY + boxH - 10);
 
-  // Controls hint
-  ctx.textAlign = 'left';
-  ctx.fillText('Tab:switch | BkSp:page | I:close', boxX + 15, boxY + boxH - 10);
+    // Controls hint
+    ctx.textAlign = 'left';
+    ctx.fillText('Tab:switch | BkSp:page | I:close', boxX + 15, boxY + boxH - 10);
+  }
 
   ctx.restore();
 }

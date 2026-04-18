@@ -561,7 +561,6 @@ function draw() {
   ctx.save();
   ctx.translate(offset.x + shake.x, offset.y + shake.y);
 
-  drawBorder();
   drawDoorIndicators();
   drawRoomElements();
   drawAttackVisual(ctx);
@@ -911,15 +910,20 @@ function update() {
 }
 
 // --- Image Loading and Game Start ---
-let imagesLoaded = 0;
+let assetsLoaded = 0;
 function checkReady() {
-  imagesLoaded++;
-  if (imagesLoaded >= 2) requestAnimationFrame(gameLoop);
+  assetsLoaded++;
+  if (assetsLoaded >= 3) requestAnimationFrame(gameLoop);
 }
 window.spriteSheet.onload = checkReady;
 window.tableImg.onload = checkReady;
 if (window.spriteSheet.complete) checkReady();
 if (window.tableImg.complete) checkReady();
+
+window.CSVLoader.init().then(() => {
+  window.MapManager.buildFromCSV();
+  checkReady();
+});
 
 // --- Canvas Click Handler ---
 canvas.addEventListener('click', (e) => {

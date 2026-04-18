@@ -182,7 +182,30 @@
       const delta = now - (ai._lastUpdate || now);
       ai._lastUpdate = now;
 
-      // --- State transitions ---
+      // --- Mask effect: force all enemies to flee ---
+      if (window.maskEffect && window.maskEffect.active) {
+        if (now - ai.lastMoveTime >= MOVE_INTERVAL) {
+          ai.lastMoveTime = now;
+          // Calculate direction away from player
+          const rdx = ent.area.x - px;
+          const rdy = ent.area.y - py;
+          const fleeX = rdx >= 0 ? 1 : -1;
+          const fleeY = rdy >= 0 ? 1 : -1;
+          ai.retreatDirX = rdx === 0 ? (Math.random() > 0.5 ? 1 : -1) : fleeX;
+          ai.retreatDirY = rdy === 0 ? (Math.random() > 0.5 ? 1 : -1) : fleeY;
+          ai.retreatRemaining = 1;
+          retreatStep(ent, ai, room);
+        }
+        ai.state = 'idle';
+        ai.stallTimer = 0;
+        ai.attackChargeTimer = 0;
+        // Update hitbox
+        if (ent.hitbox) {
+          ent.hitbox.x = ent.area.x;
+          ent.hitbox.y = ent.area.y;
+        }
+        continue;
+      }
       switch (ai.state) {
 
         case 'idle':

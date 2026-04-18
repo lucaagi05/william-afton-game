@@ -1,0 +1,4 @@
+Name,File,Volume,Loop,Start,End
+menu,audio/menu_theme.mp3,75,True,0,-1
+ingame,audio/partytime.mp3,100,True,0,-1
+garden,audio/partytime.mp3,80,True,0,-1
